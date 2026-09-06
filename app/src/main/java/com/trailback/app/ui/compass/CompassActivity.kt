@@ -6,7 +6,7 @@ import android.content.ServiceConnection
 import android.location.Location
 import android.os.Bundle
 import android.os.IBinder
-import androidx.appcompat.app.AppCompatActivity
+import com.trailback.app.ui.common.KeepScreenOnActivity
 import androidx.lifecycle.lifecycleScope
 import com.trailback.app.TrailBackApp
 import com.trailback.app.data.db.EntryPoint
@@ -19,12 +19,15 @@ import kotlinx.coroutines.launch
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
-class CompassActivity : AppCompatActivity() {
+class CompassActivity : KeepScreenOnActivity() {
     private lateinit var binding: ActivityCompassBinding
-    private lateinit var sensorManager: CompassSensorManager
     private lateinit var infoPanelController: InfoPanelController
     private var trackingService: TrackingService? = null
     private var isServiceBound = false
+    // НОВОЕ: подписка на общий (см. TrailBackApp) CompassSensorManager.heading —
+    // отменяется/пересоздаётся вместе с acquire()/release() в onResume/onPause,
+    // по тому же принципу, что и locationObserverJob ниже.
+    private var headingObserverJob: kotlinx.coroutines.Job? = null
     // Кэшируется один раз при входе в режим "Домой", чтобы пересчёт азимута
     // на каждый тик компаса не требовал обращения к БД.
     private var homeEntryPoint: EntryPoint? = null
@@ -90,14 +93,11 @@ class CompassActivity : AppCompatActivity() {
                 binding.compassView.mode = CompassView.Mode.NORMAL
             }
         }
-        sensorManager = CompassSensorManager(this) { heading ->
-            currentHeadingDegrees = heading
-            binding.compassView.headingDegrees = heading
-            // Пересчитываем на каждый тик компаса (не только на редкие
-            // location-апдейты), чтобы стрелка визуально реагировала мгновенно.
-            recomputeArrow()
-        }
-        sensorManager.northMode = app.settingsStore.northMode
+        // НОВОЕ: курс телефона теперь обновляется через подписку на общий
+        // app.compassSensorManager.heading (см. onResume) — сам разовый
+        // колбэк в конструкторе больше не нужен, т.к. синглтон общий для
+        // всех экранов и может иметь несколько подписчиков одновременно.
+        app.compassSensorManager.northMode = app.settingsStore.northMode
         infoPanelController.updateRouteCounter()
     }
     override fun onStart() {
@@ -118,16 +118,33 @@ class CompassActivity : AppCompatActivity() {
     }
     override fun onResume() {
         super.onResume()
-        sensorManager.start()
+        val app = application as TrailBackApp
+        app.compassSensorManager.acquire()
         infoPanelController.start()
         isFirstArrowFrame = true // холодный старт стрелки на дом
         // Страховка: пересчитываем склонение по последней известной позиции
         // сразу при возобновлении, не дожидаясь следующего GPS-тика.
-        lastLocation?.let { sensorManager.updateLocationForDeclination(it) }
+        lastLocation?.let { app.compassSensorManager.updateLocationForDeclination(it) }
         infoPanelController.updateRouteCounter()
+        // НОВОЕ: подписка на общий поток курса — та же логика, что раньше
+        // была в разовом колбэке конструктора (пересчёт на каждый тик, не
+        // только на редкие location-апдейты, чтобы стрелка реагировала
+        // мгновенно). Отменяем предыдущую подписку на всякий случай —
+        // тот же принцип, что и у locationObserverJob ниже.
+        headingObserverJob?.cancel()
+        headingObserverJob = lifecycleScope.launch {
+            app.compassSensorManager.heading.collect { heading ->
+                currentHeadingDegrees = heading
+                binding.compassView.headingDegrees = heading
+                recomputeArrow()
+            }
+        }
     }
     override fun onPause() {
-        sensorManager.stop()
+        val app = application as TrailBackApp
+        app.compassSensorManager.release()
+        headingObserverJob?.cancel()
+        headingObserverJob = null
         infoPanelController.stop()
         smoothedArrowSin = null
         smoothedArrowCos = null
@@ -150,7 +167,7 @@ class CompassActivity : AppCompatActivity() {
             service.currentLocation.collect { location ->
                 if (location != null) {
                     lastLocation = location
-                    sensorManager.updateLocationForDeclination(location)
+                    (application as TrailBackApp).compassSensorManager.updateLocationForDeclination(location)
                     recomputeArrow()
                     // НОВОЕ: дистанция до цели — для RETURNING берём entryPoint
                     // (как раньше), для DIRECTION — arrowTargetLocation
@@ -194,7 +211,7 @@ class CompassActivity : AppCompatActivity() {
         // на величину магнитного склонения.
         val app = application as TrailBackApp
         val adjustedBearing = if (app.settingsStore.northMode == NorthMode.MAGNETIC) {
-            trueBearing - sensorManager.currentDeclination
+            trueBearing - app.compassSensorManager.currentDeclination
         } else {
             trueBearing
         }

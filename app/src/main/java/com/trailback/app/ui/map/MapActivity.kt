@@ -13,7 +13,7 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.trailback.app.ui.common.KeepScreenOnActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -23,7 +23,6 @@ import com.trailback.app.data.repository.TrackingMode
 import com.trailback.app.databinding.ActivityMapBinding
 import com.trailback.app.service.TrackingService
 import com.trailback.app.ui.compass.CompassActivity
-import com.trailback.app.ui.compass.CompassSensorManager
 import com.trailback.app.ui.common.InfoPanelController
 import com.trailback.app.ui.menu.MenuActivity
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -35,17 +34,21 @@ import com.google.android.gms.location.Priority
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
-class MapActivity : AppCompatActivity() {
+class MapActivity : KeepScreenOnActivity() {
     companion object {
         const val ACTION_SHOW_ARRIVED_DIALOG = "com.trailback.app.SHOW_ARRIVED_DIALOG"
+        // НОВОЕ: симметрично ACTION_SHOW_ARRIVED_DIALOG, для "взятия направления".
+        const val ACTION_SHOW_DIRECTION_ARRIVED_DIALOG = "com.trailback.app.SHOW_DIRECTION_ARRIVED_DIALOG"
         const val LOW_ACCURACY_THRESHOLD_METERS = 50f
     }
     private lateinit var binding: ActivityMapBinding
     private lateinit var viewModel: MapViewModel
     private lateinit var mapController: MapController
-    private lateinit var compassSensorManager: CompassSensorManager
     private var trackingService: TrackingService? = null
     private var isServiceBound = false
+    // НОВОЕ: подписка на общий (см. TrailBackApp) CompassSensorManager.heading —
+    // отменяется/пересоздаётся вместе с acquire()/release() в onResume/onPause.
+    private var headingObserverJob: kotlinx.coroutines.Job? = null
     private var lastKnownLocation: Location? = null
     // НОВОЕ: "взятие направления" — координаты активной цели (см. решение
     // по ТЗ), null если не активна. Читается/пишется напрямую в
@@ -108,11 +111,10 @@ class MapActivity : AppCompatActivity() {
             updateZoomButtonsState()
             refreshNavigationTargetUi() // НОВОЕ — та же гонка: mapView пересоздан, маркер цели нужно перерисовать
         }
-        compassSensorManager = CompassSensorManager(this) { heading ->
-            currentHeading = heading
-            binding.miniCompassView.headingDegrees = heading
-        }
-        compassSensorManager.northMode = app.settingsStore.northMode
+        // НОВОЕ: курс телефона теперь обновляется через подписку на общий
+        // app.compassSensorManager.heading (см. onResume) вместо собственного
+        // экземпляра с разовым колбэком.
+        app.compassSensorManager.northMode = app.settingsStore.northMode
         infoPanelController = InfoPanelController(this, binding.topInfoPanel)
         checkCrashRecoveryThenStart(app)
         setupButtons()
@@ -131,8 +133,9 @@ class MapActivity : AppCompatActivity() {
         handleArrivalIntent(intent)
     }
     private fun handleArrivalIntent(intent: Intent?) {
-        if (intent?.action == ACTION_SHOW_ARRIVED_DIALOG) {
-            showArrivedDialog()
+        when (intent?.action) {
+            ACTION_SHOW_ARRIVED_DIALOG -> showArrivedDialog()
+            ACTION_SHOW_DIRECTION_ARRIVED_DIALOG -> showDirectionArrivedDialog() // НОВОЕ
         }
     }
     override fun onStart() {
@@ -144,15 +147,27 @@ class MapActivity : AppCompatActivity() {
     }
     override fun onResume() {
         super.onResume()
-        compassSensorManager.start()
+        val app = application as TrailBackApp
+        app.compassSensorManager.acquire()
         infoPanelController.start()
         viewModel.refreshActiveEntryPoint()
         reapplyOfflineMapIfChanged()
         startForegroundOnlyLocationUpdates()
         refreshNavigationTargetUi() // НОВОЕ
+        // НОВОЕ: подписка на общий поток курса вместо разового колбэка.
+        headingObserverJob?.cancel()
+        headingObserverJob = lifecycleScope.launch {
+            app.compassSensorManager.heading.collect { heading ->
+                currentHeading = heading
+                binding.miniCompassView.headingDegrees = heading
+            }
+        }
     }
     override fun onPause() {
-        compassSensorManager.stop()
+        val app = application as TrailBackApp
+        app.compassSensorManager.release()
+        headingObserverJob?.cancel()
+        headingObserverJob = null
         infoPanelController.stop()
         foregroundLocationClient.removeLocationUpdates(foregroundLocationCallback)
         super.onPause()
@@ -439,7 +454,9 @@ class MapActivity : AppCompatActivity() {
             .show()
     }
     private fun showMarkPlaceDialog() {
-        val input = androidx.appcompat.widget.AppCompatEditText(this)
+        val input = androidx.appcompat.widget.AppCompatEditText(this).apply {
+            hint = getString(R.string.mark_place_hint)
+        }
         AlertDialog.Builder(this)
             .setTitle(R.string.mark_place_dialog_title)
             .setView(input)
@@ -486,7 +503,9 @@ class MapActivity : AppCompatActivity() {
     /** Тот же флоу, что и showMarkPlaceDialog(), но координаты берутся из
      * места долгого тапа, а не из текущей геопозиции пользователя. */
     private fun showSavePlaceAtDialog(latitude: Double, longitude: Double) {
-        val input = androidx.appcompat.widget.AppCompatEditText(this)
+        val input = androidx.appcompat.widget.AppCompatEditText(this).apply {
+            hint = getString(R.string.mark_place_hint)
+        }
         AlertDialog.Builder(this)
             .setTitle(R.string.mark_place_dialog_title)
             .setView(input)

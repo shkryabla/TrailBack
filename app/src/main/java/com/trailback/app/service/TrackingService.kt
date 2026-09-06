@@ -1,5 +1,4 @@
 package com.trailback.app.service
-import android.app.Service
 import android.content.Intent
 import android.location.Location
 import android.os.IBinder
@@ -88,10 +87,6 @@ class TrackingService : LifecycleService() {
         TrackingMode.RETURNING -> getString(R.string.tracking_notification_returning)
         TrackingMode.IDLE -> getString(R.string.tracking_notification_idle)
     }
-    fun triggerManualArrivalCheck() {
-        arrivalDetector.onManualTrigger(System.currentTimeMillis())
-        _arrivedHomeEvent.value = true
-    }
     fun onArrivalDialogDismissed(confirmed: Boolean) {
         _arrivedHomeEvent.value = false
         if (!confirmed) {
@@ -175,6 +170,15 @@ class TrackingService : LifecycleService() {
                     )
                     if (shouldPrompt) {
                         _arrivedHomeEvent.value = true
+                        // НОВОЕ: раньше событие уходило только в StateFlow —
+                        // если приложение свёрнуто, никто его не наблюдает
+                        // (MapActivity подписывается только пока видима), и
+                        // пользователь узнавал о прибытии лишь при следующем
+                        // открытии приложения. Теперь при сворачивании
+                        // дублируем событие фоновым push-уведомлением.
+                        if (!app.isAppInForeground) {
+                            notificationHelper.notifyArrivedHome()
+                        }
                     }
                 }
                 TrackingMode.IDLE -> Unit
@@ -191,6 +195,9 @@ class TrackingService : LifecycleService() {
                 )
                 if (shouldPromptDirection) {
                     _directionArrivedEvent.value = true
+                    if (!app.isAppInForeground) { // НОВОЕ
+                        notificationHelper.notifyArrivedAtDirectionTarget()
+                    }
                 }
             }
         }

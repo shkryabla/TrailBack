@@ -5,8 +5,6 @@
     <string name="button_start">СТАРТ</string>
     <string name="button_stop">СТОП</string>
     <string name="button_home">ДОМОЙ</string>
-    <string name="distance_traveled_label">Путь</string>
-    <string name="distance_to_home_label">До точки старта</string>
     <string name="label_route_counter">Счётчик пути</string>
     <string name="label_distance_to_destination">До п. назнач.</string>
     <string name="satellites_label">Спутники GPS: %1$d   ГЛОНАСС: %2$d</string>
@@ -26,10 +24,6 @@
     <string name="tracking_notification_returning">Возврат к точке старта</string>
     <!-- НОВОЕ: кнопка "Выход" в постоянном уведомлении -->
     <string name="notification_exit_action">Выход</string>
-    <string name="notification_stopped_title">Запись остановлена</string>
-    <string name="notification_stopped_text">Маршрут сохранён</string>
-    <string name="notification_returning_title">Включён режим возврата</string>
-    <string name="notification_returning_text">Следуйте по стрелке к точке старта</string>
     <string name="notification_arrived_title">Вы вернулись!</string>
     <string name="menu_entry_points">Сохранённые точки входа</string>
     <string name="menu_marked_places">Отмеченные места</string>

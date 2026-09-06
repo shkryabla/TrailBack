@@ -6,8 +6,6 @@
     <string name="button_start">START</string>
     <string name="button_stop">STOP</string>
     <string name="button_home">HOME</string>
-    <string name="distance_traveled_label">Distance</string>
-    <string name="distance_to_home_label">To start</string>
     <string name="label_route_counter">Route counter</string>
     <string name="label_distance_to_destination">To destination</string>
     <string name="satellites_label">Satellites GPS: %1$d   GLONASS: %2$d</string>
@@ -29,10 +27,6 @@
     <string name="tracking_notification_returning">Returning to start point</string>
     <!-- НОВОЕ: кнопка "Выход" в постоянном уведомлении -->
     <string name="notification_exit_action">Exit</string>
-    <string name="notification_stopped_title">Recording stopped</string>
-    <string name="notification_stopped_text">Your route has been saved</string>
-    <string name="notification_returning_title">Return mode enabled</string>
-    <string name="notification_returning_text">Follow the arrow to the start point</string>
     <string name="notification_arrived_title">You are back!</string>
     <!-- Меню -->
     <string name="menu_entry_points">Saved start points</string>

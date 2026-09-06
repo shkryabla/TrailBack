@@ -3,7 +3,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import com.trailback.app.ui.common.KeepScreenOnActivity
 import com.trailback.app.BuildConfig
 import com.trailback.app.R
 import com.trailback.app.TrailBackApp
@@ -14,7 +14,7 @@ import com.trailback.app.databinding.ActivitySettingsBinding
  * Показывается только запрошенная секция — остальные view.GONE,
  * чтобы не плодить 5 отдельных Activity под каждый простой пункт меню.
  */
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : KeepScreenOnActivity() {
     companion object {
         const val EXTRA_SECTION = "extra_section"
         const val SECTION_COMPASS = "compass"

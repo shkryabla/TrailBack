@@ -3,13 +3,13 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.trailback.app.ui.common.KeepScreenOnActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.trailback.app.TrailBackApp
 import com.trailback.app.data.repository.TrackingMode
 import com.trailback.app.databinding.ActivityMenuBinding
 import com.trailback.app.ui.compass.CompassActivity
-class MenuActivity : AppCompatActivity() {
+class MenuActivity : KeepScreenOnActivity() {
     private lateinit var binding: ActivityMenuBinding
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,19 +56,25 @@ class MenuActivity : AppCompatActivity() {
     }
     /**
      * Выход заблокирован в активном режиме "Домой" (см. решение по ТЗ).
-     * По подтверждению — полное завершение: останавливаем фоновый сервис
-     * (иначе процесс жил бы дальше как foreground-сервис даже после
-     * закрытия всех экранов) и убиваем сам процесс приложения, а не просто
-     * закрываем видимые Activity (finishAffinity() оставил бы сервис живым).
      *
-     * ВАЖНО: уведомление отменяется здесь ЯВНО и СИНХРОННО, до stopService()
-     * и killProcess(). stopService() асинхронный — Android лишь просит
-     * сервис остановиться, а сам onDestroy() выполняется отдельно на главном
-     * потоке процесса. Если сразу после этого вызвать killProcess(), сервис
-     * может не успеть доработать onDestroy() (и его stopForeground()) до
-     * того, как процесс убьют — из-за этого уведомление оставалось висеть
-     * даже после нажатия "Выход". Прямая отмена через NotificationManager
-     * не зависит от того, успел ли сервис корректно завершиться.
+     * Традиционный для Android способ закрытия приложения с фоновым
+     * сервисом (см. решение по ТЗ): останавливаем сервис штатно и
+     * закрываем всю задачу — Android сам освободит процесс, когда сочтёт
+     * нужным, без явного самоубийства.
+     *
+     * РАНЬШЕ здесь был android.os.Process.killProcess() сразу после
+     * stopService(). Это стало причиной бага "приложение не закрывается":
+     * stopService() — АСИНХРОННЫЙ вызов (лишь просьба системе остановить
+     * сервис), а killProcess() убивает процесс СИНХРОННО следующей же
+     * строкой. Если самоубийство происходило раньше, чем система успевала
+     * зарегистрировать нашу остановку как ОСОЗНАННУЮ, а TrackingService —
+     * foreground-сервис с START_STICKY (см. onStartCommand) — Android
+     * трактовал это как НЕОЖИДАННУЮ смерть процесса и, следуя контракту
+     * START_STICKY, заново поднимал сервис в новом процессе. Со стороны
+     * это выглядело так, будто "Выход" просто закрывает экран меню и
+     * ничего не происходит. Явное самоубийство процесса — и вообще
+     * нестандартный приём: большинство Android-приложений просто
+     * останавливают сервис и завершают задачу, не убивая процесс сами.
      */
     private fun onExitTapped() {
         val app = application as TrailBackApp
@@ -82,13 +88,10 @@ class MenuActivity : AppCompatActivity() {
                 val notificationManager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
                 notificationManager.cancel(com.trailback.app.service.NotificationHelper.FOREGROUND_NOTIFICATION_ID)
                 stopService(Intent(this, com.trailback.app.service.TrackingService::class.java))
-                // НОВОЕ: finishAndRemoveTask() вместо finishAffinity() — иначе
-                // задача приложения оставалась висеть в "Недавних" (Recent
-                // Apps/диспетчере задач) даже после killProcess(), т.к.
-                // finishAffinity() закрывает Activity, но не убирает саму
-                // запись о задаче из системного списка (см. решение по ТЗ).
+                // finishAndRemoveTask() (не finishAffinity()) — иначе задача
+                // приложения оставалась висеть в "Недавних" даже после
+                // закрытия всех экранов (см. решение по ТЗ).
                 finishAndRemoveTask()
-                android.os.Process.killProcess(android.os.Process.myPid())
             }
             .setNegativeButton(com.trailback.app.R.string.arrived_dialog_no, null)
             .show()

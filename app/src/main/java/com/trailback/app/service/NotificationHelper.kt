@@ -96,10 +96,33 @@ class NotificationHelper(private val context: Context) {
             .build()
         manager.notify(ID_ARRIVED, notification)
     }
+    /** НОВОЕ: симметрично notifyArrivedHome(), но для цели "взятия
+     * направления" — показывается, только если приложение свёрнуто, тап
+     * открывает тот же диалог подтверждения, что видит пользователь и в
+     * foreground (см. TrackingService.handleNewLocation). */
+    fun notifyArrivedAtDirectionTarget() {
+        val openAppIntent = PendingIntent.getActivity(
+            context, 2,
+            Intent(context, MapActivity::class.java).apply {
+                action = MapActivity.ACTION_SHOW_DIRECTION_ARRIVED_DIALOG
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
+            .setSmallIcon(R.drawable.ic_notification_arrived)
+            .setContentTitle(context.getString(R.string.direction_arrived_dialog_title))
+            .setContentIntent(openAppIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        manager.notify(ID_DIRECTION_ARRIVED, notification)
+    }
     companion object {
         const val CHANNEL_TRACKING = "tracking_channel"
         const val CHANNEL_ALERTS = "alerts_channel"
         const val FOREGROUND_NOTIFICATION_ID = 1001
         private const val ID_ARRIVED = 1004
+        private const val ID_DIRECTION_ARRIVED = 1005 // НОВОЕ
     }
 }

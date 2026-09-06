@@ -9,7 +9,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.trailback.app.ui.common.KeepScreenOnActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -20,7 +20,7 @@ import com.trailback.app.databinding.ActivityMarkedPlacesBinding
 import com.trailback.app.databinding.ItemMarkedPlaceRowBinding
 import kotlinx.coroutines.launch
 import java.util.Locale
-class MarkedPlacesActivity : AppCompatActivity() {
+class MarkedPlacesActivity : KeepScreenOnActivity() {
     private lateinit var binding: ActivityMarkedPlacesBinding
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

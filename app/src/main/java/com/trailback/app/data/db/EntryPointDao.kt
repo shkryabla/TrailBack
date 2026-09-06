@@ -11,8 +11,6 @@ interface EntryPointDao {
     fun observeAll(): Flow<List<EntryPoint>>
     @Query("SELECT * FROM entry_points WHERE id = :id")
     suspend fun getById(id: Long): EntryPoint?
-    @Query("SELECT * FROM entry_points ORDER BY timestamp DESC LIMIT 1")
-    suspend fun getLast(): EntryPoint?
     /** Массовая очистка — единственный способ удаления, с тройным подтверждением в UI. */
     @Query("DELETE FROM entry_points")
     suspend fun deleteAll()

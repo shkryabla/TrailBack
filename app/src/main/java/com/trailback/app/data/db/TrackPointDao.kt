@@ -17,6 +17,4 @@ interface TrackPointDao {
     suspend fun deleteAllExceptEntryPoint(activeEntryPointId: Long)
     @Query("DELETE FROM track_points")
     suspend fun deleteAll()
-    @Query("SELECT COUNT(*) FROM track_points WHERE entryPointId = :entryPointId")
-    suspend fun countForEntryPoint(entryPointId: Long): Int
 }
