@@ -42,6 +42,23 @@ class TrailBackApp : Application() {
     private var startedActivityCount = 0
     val isAppInForeground: Boolean
         get() = startedActivityCount > 0
+    // НОВОЕ: реестр всех живых Activity — нужен для гарантированного полного
+    // закрытия приложения по кнопке "Выход" (см. решение по ТЗ). Раньше
+    // расчёт был на finishAndRemoveTask(), который по документации должен
+    // закрывать и текущую Activity, и все НИЖЕ неё в том же таске с ТЕМ ЖЕ
+    // task affinity — но на практике этого оказалось недостаточно (окно
+    // приложения оставалось открытым после нажатия "Выход"). Явный список
+    // и точечный finish() на каждой Activity не зависит от тонкостей
+    // affinity/flags конкретной задачи — работает всегда одинаково.
+    private val activeActivities = mutableListOf<Activity>()
+    /** Закрывает все известные экраны приложения, кроме [current] — вызывающий
+     * код сам решает, что делать с [current] (обычно — finishAndRemoveTask()
+     * на нём же, последним, чтобы заодно убрать задачу из "Недавних"). */
+    fun finishAllActivitiesExcept(current: Activity) {
+        activeActivities.toList().forEach { activity ->
+            if (activity !== current) activity.finish()
+        }
+    }
     override fun onCreate() {
         super.onCreate()
         database = AppDatabase.getInstance(this)
@@ -58,11 +75,15 @@ class TrailBackApp : Application() {
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) { startedActivityCount++ }
             override fun onActivityStopped(activity: Activity) { startedActivityCount-- }
-            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                activeActivities.add(activity)
+            }
+            override fun onActivityDestroyed(activity: Activity) {
+                activeActivities.remove(activity)
+            }
             override fun onActivityResumed(activity: Activity) = Unit
             override fun onActivityPaused(activity: Activity) = Unit
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-            override fun onActivityDestroyed(activity: Activity) = Unit
         })
         // 1) Если после краша прошло больше 72 часов — трек считается брошенным
         //    и сбрасывается; 2) в любом случае подчищаем осиротевшие точки трека

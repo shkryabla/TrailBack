@@ -34,7 +34,6 @@ import org.mapsforge.map.layer.renderer.TileRendererLayer
 import org.mapsforge.map.reader.MapFile
 import org.mapsforge.map.rendertheme.InternalRenderTheme
 import java.io.File
-import kotlin.math.abs
 /**
  * Инкапсулирует работу с Mapsforge: если офлайн-карта выбрана — рендерит её
  * тайлы; если нет ни офлайн-карты, ни интернета — показывает серую заглушку,
@@ -49,7 +48,11 @@ class MapController(
     private var tileDownloadLayer: TileDownloadLayer? = null
     private var trackPolyline: Polyline? = null
     private var homeLinePolyline: Polyline? = null
-    private var userPositionMarker: Marker? = null
+    // ИЗМЕНЕНО: раньше был Marker с пересозданием повёрнутого битмапа на
+    // каждое изменение курса >3° (createRotatedMarkerBitmap) — заменено на
+    // кастомный Layer, вращающий Canvas на этапе отрисовки, без аллокаций
+    // Bitmap на каждый тик датчика (см. RotatingUserMarkerLayer).
+    private var userMarkerLayer: RotatingUserMarkerLayer? = null
     private var accuracyCircle: Circle? = null
     private var entryPointMarker: Marker? = null
     // НОВОЕ: "взятие направления" — независимые от точки входа маркер и
@@ -60,7 +63,6 @@ class MapController(
      * MapActivity сам решает, что показать (диалог выбора действия). */
     var onLongPress: ((screenX: Float, screenY: Float) -> Unit)? = null
     private val markedPlaceMarkers = mutableListOf<Marker>()
-    private var lastMarkerHeading: Float? = null
     private val density = context.resources.displayMetrics.density
     private val markerSizePx: Int = (MARKER_SIZE_DP * density).toInt()
     /**
@@ -104,13 +106,13 @@ class MapController(
         tileDownloadLayer = null
         trackPolyline = null
         homeLinePolyline = null
-        userPositionMarker = null
+        userMarkerLayer?.destroy()
+        userMarkerLayer = null
         accuracyCircle = null
         entryPointMarker = null
         navigationTargetMarker = null // НОВОЕ
         navigationTargetLine = null // НОВОЕ
         markedPlaceMarkers.clear()
-        lastMarkerHeading = null
         followModeEnabled = true
         container.removeAllViews()
         if (offlineMapsUri != null) {
@@ -183,6 +185,7 @@ class MapController(
         newMapView.model.mapViewPosition.zoomLevel = DEFAULT_ZOOM_LEVEL
         tileRendererLayer = layer
         mapView = newMapView
+        attachUserMarkerLayer(newMapView)
         attachManualPanDetector(newMapView)
         container.addView(newMapView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
@@ -219,10 +222,31 @@ class MapController(
         newMapView.model.mapViewPosition.zoomLevel = DEFAULT_ZOOM_LEVEL
         tileDownloadLayer = downloadLayer
         mapView = newMapView
+        attachUserMarkerLayer(newMapView)
         attachManualPanDetector(newMapView)
         container.addView(newMapView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
         ))
+    }
+    /**
+     * Создаёт и добавляет RotatingUserMarkerLayer в новый MapView — общий
+     * код для offline- и online-веток (showOfflineMap/showOnlineMap), чтобы
+     * не дублировать создание слоя. ВАЖНО: добавляется сразу после
+     * тайлового слоя (до линий трека/дома/направления, которые добавляются
+     * позже через updateTrackLine/updateHomeLine/updateNavigationTargetLine) —
+     * порядок добавления в layerManager.layers определяет порядок отрисовки,
+     * маркер пользователя должен быть поверх линий, но под маркером цели
+     * "взятия направления" и маркером точки входа (они добавляются ещё позже).
+     */
+    private fun attachUserMarkerLayer(mapView: MapView) {
+        val layer = RotatingUserMarkerLayer(
+            displayModel = mapView.model.displayModel,
+            context = context,
+            drawableRes = R.drawable.ic_user_position,
+            sizePx = markerSizePx
+        )
+        mapView.layerManager.layers.add(layer)
+        userMarkerLayer = layer
     }
     /**
      * Любое касание карты пользователем (пан, зум жестом, простой тап)
@@ -351,33 +375,29 @@ class MapController(
     }
     /**
      * Значок положения пользователя — стрелка размером 1.5x от исходного
-     * (48dp вместо 32dp), поворачивается по курсу устройства. Обновляется
-     * только при заметном изменении курса (>3°), чтобы не пересоздавать
-     * битмап на каждый чих датчика.
+     * (48dp вместо 32dp), поворачивается по курсу устройства.
+     *
+     * ИЗМЕНЕНО: раньше здесь пересоздавался Bitmap через
+     * createRotatedMarkerBitmap() на каждое изменение курса >3° (см.
+     * angularDifference) — заметная нагрузка на GC при частых обновлениях
+     * датчика и "ступенчатое" вращение стрелки. Теперь позиция и угол
+     * просто передаются в RotatingUserMarkerLayer.updatePositionAndRotation(),
+     * который поворачивает Canvas на этапе отрисовки без единой аллокации —
+     * поэтому порог по углу больше не нужен, стрелка вращается так же
+     * плавно, как на экране компаса (см. RotatingUserMarkerLayer).
      */
     fun updateUserPositionMarker(location: Location?, headingDegrees: Float) {
         val mapView = this.mapView ?: return
+        val layer = userMarkerLayer ?: return
         if (location == null) return
         updateAccuracyCircle(mapView, location)
-        val previousHeading = lastMarkerHeading
-        val headingChanged = previousHeading == null || angularDifference(previousHeading, headingDegrees) > 3f
-        if (userPositionMarker == null || headingChanged) {
-            val bitmap = createRotatedMarkerBitmap(R.drawable.ic_user_position, markerSizePx, headingDegrees)
-            bitmap.incrementRefCount()
-            if (userPositionMarker == null) {
-                val marker = Marker(LatLong(location.latitude, location.longitude), bitmap, 0, 0)
-                mapView.layerManager.layers.add(marker)
-                userPositionMarker = marker
-                // Первая позиция — центрируем всегда, чтобы карта не
-                // стартовала на "null island" (0,0), независимо от режима.
-                mapView.model.mapViewPosition.center = LatLong(location.latitude, location.longitude)
-            } else {
-                userPositionMarker?.setBitmap(bitmap)
-                userPositionMarker?.setLatLong(LatLong(location.latitude, location.longitude))
-            }
-            lastMarkerHeading = headingDegrees
-        } else {
-            userPositionMarker?.setLatLong(LatLong(location.latitude, location.longitude))
+        val isFirstFix = !layer.hasPosition
+        layer.updatePositionAndRotation(LatLong(location.latitude, location.longitude), headingDegrees)
+        // Первая позиция — центрируем всегда, чтобы карта не стартовала
+        // на "null island" (0,0), независимо от режима (сохранено из
+        // прежней реализации на Marker).
+        if (isFirstFix) {
+            mapView.model.mapViewPosition.center = LatLong(location.latitude, location.longitude)
         }
         // Следящий режим (п.1 решения): пока пользователь не трогал карту
         // руками, она сама едет за его реальным перемещением. Как только он
@@ -425,11 +445,6 @@ class MapController(
             color = 0x88E65100.toInt() // тот же цвет, контур более заметный
             strokeWidth = 1.5f * density
         }
-    }
-    private fun angularDifference(a: Float, b: Float): Float {
-        var diff = abs(a - b) % 360f
-        if (diff > 180f) diff = 360f - diff
-        return diff
     }
     /** Рисует drawable повёрнутым на заданный угол в квадратный битмап нужного размера. */
     private fun createRotatedMarkerBitmap(drawableRes: Int, sizePx: Int, rotationDegrees: Float): org.mapsforge.core.graphics.Bitmap {
@@ -600,6 +615,7 @@ class MapController(
     fun onDestroy() {
         tileRendererLayer?.let { it.mapDataStore.close() }
         tileDownloadLayer?.onDestroy()
+        userMarkerLayer?.destroy()
         mapView?.destroyAll()
         AndroidGraphicFactory.clearResourceMemoryCache()
     }

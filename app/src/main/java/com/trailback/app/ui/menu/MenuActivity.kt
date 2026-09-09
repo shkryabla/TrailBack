@@ -55,7 +55,10 @@ class MenuActivity : KeepScreenOnActivity() {
         }
     }
     /**
-     * Выход заблокирован в активном режиме "Домой" (см. решение по ТЗ).
+     * Выход заблокирован в активном режиме "Домой" ИЛИ "Старт" (запись
+     * маршрута) — см. решение по ТЗ: случайно потерять точку возврата или
+     * прерванный на середине трек не должно быть так же просто, как закрыть
+     * приложение одной кнопкой.
      *
      * Традиционный для Android способ закрытия приложения с фоновым
      * сервисом (см. решение по ТЗ): останавливаем сервис штатно и
@@ -70,16 +73,23 @@ class MenuActivity : KeepScreenOnActivity() {
      * зарегистрировать нашу остановку как ОСОЗНАННУЮ, а TrackingService —
      * foreground-сервис с START_STICKY (см. onStartCommand) — Android
      * трактовал это как НЕОЖИДАННУЮ смерть процесса и, следуя контракту
-     * START_STICKY, заново поднимал сервис в новом процессе. Со стороны
-     * это выглядело так, будто "Выход" просто закрывает экран меню и
-     * ничего не происходит. Явное самоубийство процесса — и вообще
-     * нестандартный приём: большинство Android-приложений просто
-     * останавливают сервис и завершают задачу, не убивая процесс сами.
+     * START_STICKY, заново поднимал сервис в новом процессе.
+     *
+     * ЕЩЁ ОДНА причина, по которой окно приложения оставалось открытым
+     * даже после того, как самоубийство процесса убрали: одного
+     * finishAndRemoveTask() на MenuActivity недостаточно — по документации
+     * он обязан закрыть и все Activity НИЖЕ неё в том же таске с тем же
+     * task affinity, но полагаться на это оказалось ненадёжно. Теперь
+     * закрываем явно и гарантированно КАЖДУЮ известную Activity через
+     * реестр в TrailBackApp (см. finishAllActivitiesExcept), а
+     * finishAndRemoveTask() на себе вызываем последним штрихом — только
+     * чтобы убрать саму задачу из "Недавних".
      */
     private fun onExitTapped() {
         val app = application as TrailBackApp
-        if (app.trackingStateStore.mode == TrackingMode.RETURNING) {
-            Toast.makeText(this, com.trailback.app.R.string.exit_locked_in_returning, Toast.LENGTH_SHORT).show()
+        val mode = app.trackingStateStore.mode
+        if (mode == TrackingMode.RETURNING || mode == TrackingMode.RECORDING) {
+            Toast.makeText(this, com.trailback.app.R.string.exit_locked_active_mode, Toast.LENGTH_SHORT).show()
             return
         }
         AlertDialog.Builder(this)
@@ -88,9 +98,12 @@ class MenuActivity : KeepScreenOnActivity() {
                 val notificationManager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
                 notificationManager.cancel(com.trailback.app.service.NotificationHelper.FOREGROUND_NOTIFICATION_ID)
                 stopService(Intent(this, com.trailback.app.service.TrackingService::class.java))
-                // finishAndRemoveTask() (не finishAffinity()) — иначе задача
-                // приложения оставалась висеть в "Недавних" даже после
-                // закрытия всех экранов (см. решение по ТЗ).
+                // НОВОЕ: гарантированно закрываем ВСЕ остальные экраны
+                // (MapActivity и т.д.) явным перебором, а не полагаясь на
+                // affinity-каскад finishAndRemoveTask() — см. пояснение выше.
+                app.finishAllActivitiesExcept(this)
+                // finishAndRemoveTask() (не finishAffinity()) на себе —
+                // закрывает саму MenuActivity и убирает задачу из "Недавних".
                 finishAndRemoveTask()
             }
             .setNegativeButton(com.trailback.app.R.string.arrived_dialog_no, null)
@@ -104,4 +117,3 @@ class MenuActivity : KeepScreenOnActivity() {
     }
 }
 data class MenuItem(val title: String, val onClick: () -> Unit)
-

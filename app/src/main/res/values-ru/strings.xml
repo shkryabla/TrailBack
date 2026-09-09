@@ -54,7 +54,7 @@
     <string name="entry_point_set_active">Точка установлена как активная</string>
     <string name="menu_exit">Выход</string>
     <string name="exit_confirm_message">Вы уверены, что хотите выйти из приложения?</string>
-    <string name="exit_locked_in_returning">Нельзя выйти из приложения в активном режиме "Домой"</string>
+    <string name="exit_locked_active_mode">Нельзя выйти из приложения во время записи маршрута или в активном режиме "Домой"</string>
     <string name="manual_arrival_reset_confirm_message">Вы уверены? Режим возврата на начальную точку будет сброшен!</string>
     <!-- НОВОЕ: "Взятие направления" (долгий тап на карте) -->
     <string name="long_press_dialog_title">Что сделать с этой точкой?</string>
