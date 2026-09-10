@@ -55,7 +55,6 @@ class MapActivity : KeepScreenOnActivity() {
     // TrackingStateStore через TrackingRepository, это поле — локальный
     // кэш для UI (видимость кнопки отмены, линия/маркер на карте).
     private var navigationTarget: Pair<Double, Double>? = null
-    private var currentHeading: Float = 0f
     private var lastAppliedOfflineMapsUri: String? = null
     private var serviceObserverJob: kotlinx.coroutines.Job? = null
     private lateinit var infoPanelController: InfoPanelController
@@ -154,12 +153,17 @@ class MapActivity : KeepScreenOnActivity() {
         reapplyOfflineMapIfChanged()
         startForegroundOnlyLocationUpdates()
         refreshNavigationTargetUi() // НОВОЕ
-        // НОВОЕ: подписка на общий поток курса вместо разового колбэка.
+        // ИЗМЕНЕНО: раньше heading только запоминался в currentHeading и
+        // применялся к стрелке значка на карте лишь при следующем GPS-фиксе
+        // (см. onLocationUpdated) — отсюда рывки поворота. Теперь стрелка
+        // значка вращается прямо здесь, на каждый тик курса, синхронно с
+        // мини-компасом — mapController.updateUserHeading() не трогает
+        // позицию и ничего не пересоздаёт (см. RotatingUserMarkerLayer).
         headingObserverJob?.cancel()
         headingObserverJob = lifecycleScope.launch {
             app.compassSensorManager.heading.collect { heading ->
-                currentHeading = heading
                 binding.miniCompassView.headingDegrees = heading
+                mapController.updateUserHeading(heading)
             }
         }
     }
@@ -266,7 +270,7 @@ class MapActivity : KeepScreenOnActivity() {
         }
     }
     private fun onLocationUpdated(location: Location) {
-        mapController.updateUserPositionMarker(location, currentHeading)
+        mapController.updateUserPosition(location)
         val entryPoint = viewModel.activeEntryPoint.value
         mapController.updateHomeLine(location, entryPoint, viewModel.mode.value)
         mapController.updateNavigationTargetLine(location, navigationTarget) // НОВОЕ
@@ -595,6 +599,22 @@ class MapActivity : KeepScreenOnActivity() {
         lifecycleScope.launch {
             viewModel.mode.collect { mode ->
                 updateButtonForMode(mode)
+            }
+        }
+        // НОВОЕ: прогресс копирования .map-файла (см. MapController.setupMap/
+        // resolveFirstMapFile) — показываем текст только пока идёт реальное
+        // копирование (percent != null), иначе прячем. Подписка живёт весь
+        // жизненный цикл Activity (не только onResume), т.к. само
+        // копирование может продолжаться и до первого onResume — это не
+        // датчик/GPS, расхода ресурсов на простое обновление TextView нет.
+        lifecycleScope.launch {
+            mapController.mapLoadProgress.collect { percent ->
+                if (percent != null) {
+                    binding.mapLoadProgressText.visibility = android.view.View.VISIBLE
+                    binding.mapLoadProgressText.text = getString(R.string.map_loading_progress, percent)
+                } else {
+                    binding.mapLoadProgressText.visibility = android.view.View.GONE
+                }
             }
         }
         lifecycleScope.launch {

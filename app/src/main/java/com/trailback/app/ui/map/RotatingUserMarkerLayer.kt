@@ -19,18 +19,34 @@ import org.mapsforge.map.model.DisplayModel
  * Marker.setBitmap), здесь исходный битмап рисуется ОДИН РАЗ при создании
  * слоя и больше никогда не пересоздаётся. Поворот применяется прямо к
  * android.graphics.Canvas на этапе draw() — та же техника, что уже
- * используется в MiniCompassView/CompassView для стрелок компаса. Это
- * убирает аллокации Bitmap на каждый тик датчика (раньше — на каждое
- * изменение курса >3°) и снимает "ступенчатость" вращения: теперь можно
- * слать в updatePositionAndRotation() каждое значение из
- * CompassSensorManager.heading без троттлинга, вращение плавное, как у
- * стрелки на экране компаса (источник курса тот же StateFlow).
+ * используется в MiniCompassView/CompassView для стрелок компаса.
+ *
+ * ВАЖНО: позиция и угол поворота обновляются НЕЗАВИСИМО друг от друга
+ * (updatePosition/updateRotation, а не единый updatePositionAndRotation) —
+ * это устраняет "рывки" поворота, которые были при первой версии слоя.
+ * Причина рывков: связка position+rotation обновлялась только при новом
+ * GPS-фиксе (см. MapController.updateUserPosition, вызывается из
+ * MapActivity.onLocationUpdated), а фиксы приходят редко — раз в 5-10с
+ * (см. TrackingService.RECORDING_INTERVAL_MILLIS/RETURNING_INTERVAL_MILLIS,
+ * MapActivity.foregroundLocationClient). Курс же от датчика приходит
+ * гораздо чаще (~50 Гц, см. CompassSensorManager.SENSOR_DELAY_MICROS), но
+ * раньше не мог "долететь" до перерисовки стрелки раньше следующего
+ * GPS-фикса. Теперь updateRotation() дёргается из того же heading-коллектора,
+ * что обновляет MiniCompassView (см. MapActivity.onResume) — стрелка на
+ * карте вращается с той же частотой и так же плавно, как мини-компас.
  *
  * Касается ТОЛЬКО значка текущей позиции пользователя. Маркер цели
  * "взятия направления" (ic_navigation_target_marker) и маркер точки входа
  * (ic_entry_point_marker) — статичные пины без направления, поворот им не
  * нужен и они по-прежнему рисуются обычным Marker (см. updateNavigationTargetMarker/
  * updateEntryPointMarker в MapController) — эта фича не трогается.
+ *
+ * НЕ РЕШАЕТ: кратковременное "зумирование вместе с картой" во время
+ * pinch/double-tap жеста — это отдельный механизм Mapsforge (масштабирование
+ * всего уже отрисованного кадра целиком для мгновенного отклика, пока новые
+ * тайлы не дорендерились под новый zoom), затрагивает ВСЕ layers одинаково,
+ * включая штатный mapsforge Marker. Частота requestRedraw() тут не влияет —
+ * фикс потребовал бы выноса маркера в отдельный View-оверлей поверх MapView.
  *
  * РИСК: AndroidGraphicFactory.getCanvas() — предположительное имя метода
  * для получения нативного android.graphics.Canvas из mapsforge-обёртки в
@@ -50,7 +66,7 @@ class RotatingUserMarkerLayer(
     @Volatile private var rotationDegrees: Float = 0f
 
     /** true, если уже была хотя бы одна геопозиция — используется вызывающим
-     * кодом (MapController.updateUserPositionMarker), чтобы понять, что это
+     * кодом (MapController.updateUserPosition), чтобы понять, что это
      * первый фикс и карту нужно принудительно центрировать (иначе она может
      * стартовать на "null island" (0,0), как это было со старым Marker). */
     val hasPosition: Boolean
@@ -83,10 +99,16 @@ class RotatingUserMarkerLayer(
         androidCanvas.restore()
     }
 
-    /** Вызывается на каждое обновление геопозиции/курса — не пересоздаёт
-     * ничего, только запрашивает перерисовку слоя. */
-    fun updatePositionAndRotation(latLong: LatLong, headingDegrees: Float) {
+    /** Вызывается на каждое обновление геопозиции (GPS-фикс, редко). */
+    fun updatePosition(latLong: LatLong) {
         position = latLong
+        requestRedraw()
+    }
+
+    /** Вызывается на каждый тик датчика курса (часто, ~50 Гц) — независимо
+     * от updatePosition(), чтобы вращение не было привязано к редким
+     * GPS-фиксам. */
+    fun updateRotation(headingDegrees: Float) {
         rotationDegrees = headingDegrees
         requestRedraw()
     }

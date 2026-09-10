@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background_dark">
@@ -14,6 +15,23 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
+    <!-- НОВОЕ: текст прогресса копирования большого .map файла в кэш
+         (см. MapController.mapLoadProgress) — виден только пока идёт
+         реальное копирование, иначе GONE (см. MapActivity). Без него
+         серая заглушка на 600+ МБ карте выглядела как зависшее приложение. -->
+    <TextView
+        android:id="@+id/mapLoadProgressText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:textColor="@color/text_white"
+        android:textSize="16sp"
+        android:gravity="center"
+        tools:text="Загрузка карты… 42%"
+        app:layout_constraintTop_toTopOf="@id/mapContainer"
+        app:layout_constraintBottom_toBottomOf="@id/mapContainer"
+        app:layout_constraintStart_toStartOf="@id/mapContainer"
+        app:layout_constraintEnd_toEndOf="@id/mapContainer" />
     <include
         android:id="@+id/topInfoPanel"
         layout="@layout/view_top_info_panel"

@@ -30,6 +30,8 @@
     <string name="menu_compass">Компас, указатель направления</string>
     <string name="menu_compass_settings">Настройки компаса</string>
     <string name="menu_offline_maps">Офлайн карты</string>
+    <!-- НОВОЕ: прогресс копирования большого .map файла в кэш при первом открытии -->
+    <string name="map_loading_progress">Загрузка карты… %1$d%%</string>
     <string name="menu_calibration">Калибровка</string>
     <string name="menu_info">О приложении</string>
     <string name="menu_language">Язык</string>

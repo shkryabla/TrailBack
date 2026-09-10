@@ -17,6 +17,9 @@ import com.trailback.app.data.db.TrackPoint
 import com.trailback.app.data.db.MarkedPlace
 import com.trailback.app.data.repository.TrackingMode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import org.mapsforge.core.graphics.Style
 import org.mapsforge.core.model.LatLong
@@ -46,6 +49,15 @@ class MapController(
     private var mapView: MapView? = null
     private var tileRendererLayer: TileRendererLayer? = null
     private var tileDownloadLayer: TileDownloadLayer? = null
+    // НОВОЕ: прогресс копирования файла офлайн-карты из SAF-Uri в cacheDir
+    // (см. resolveFirstMapFile) — единственная реально долгая операция при
+    // открытии офлайн-карты (сам рендеринг тайлов Mapsforge — не in-memory,
+    // читает .map по индексу с диска по требованию, здесь не при чём).
+    // null = копирование сейчас не идёт (и заглушка без текста прогресса,
+    // и обычная работающая карта дают null). MapActivity подписывается на
+    // этот поток и показывает/прячет текстовую надпись поверх карты.
+    private val _mapLoadProgress = MutableStateFlow<Int?>(null)
+    val mapLoadProgress: StateFlow<Int?> = _mapLoadProgress.asStateFlow()
     private var trackPolyline: Polyline? = null
     private var homeLinePolyline: Polyline? = null
     // ИЗМЕНЕНО: раньше был Marker с пересозданием повёрнутого битмапа на
@@ -96,7 +108,7 @@ class MapController(
         // офлайн-карты в настройках, см. решение по ТЗ — раньше карта менялась
         // только после полного перезапуска приложения) и сбрасываем ссылки на
         // маркеры/линии, привязанные к старому (уже уничтоженному) MapView —
-        // иначе updateTrackLine/updateHomeLine/updateUserPositionMarker будут
+        // иначе updateTrackLine/updateHomeLine/updateUserPosition будут
         // молча падать на несуществующие layers старой карты.
         tileRendererLayer?.let { it.mapDataStore.close() }
         tileDownloadLayer?.onDestroy()
@@ -118,8 +130,18 @@ class MapController(
         if (offlineMapsUri != null) {
             // Показываем заглушку сразу — пока в фоне может идти копирование
             // большого файла карты, пользователь не видит зависший экран.
+            // НОВОЕ: заглушка теперь дополняется текстом прогресса
+            // (см. mapLoadProgress) — раньше был голый серый прямоугольник
+            // без обратной связи, при 600+ МБ файле выглядело как зависание.
             showPlaceholder()
-            val mapFile = withContext(Dispatchers.IO) { resolveFirstMapFile(offlineMapsUri) }
+            _mapLoadProgress.value = 0
+            val mapFile = try {
+                withContext(Dispatchers.IO) {
+                    resolveFirstMapFile(offlineMapsUri) { percent -> _mapLoadProgress.value = percent }
+                }
+            } finally {
+                _mapLoadProgress.value = null
+            }
             if (mapFile != null) {
                 container.removeAllViews()
                 showOfflineMap(mapFile)
@@ -139,8 +161,17 @@ class MapController(
      * повторное копирование, если в кэше уже лежит файл с тем же именем и
      * размером — иначе при каждом пересоздании экрана карты (например,
      * после смены ориентации) 700-мегабайтный файл копировался бы заново.
+     *
+     * НОВОЕ: onProgress вызывается с процентом (0..100) на каждый шаг
+     * копирования, с троттлингом до одного вызова на изменившийся процент
+     * (не на каждый чанк — иначе запись в MutableStateFlow на 600 МБ файле
+     * при буфере 8 КБ происходила бы ~75 000 раз без всякой пользы, т.к.
+     * UI всё равно не может отрисовать больше кадров, чем экран успевает
+     * показать). Если копирование не требуется (файл уже в кэше — см.
+     * cacheFile.exists() ниже) — onProgress не вызывается вовсе, экран
+     * сразу переходит к showOfflineMap.
      */
-    private fun resolveFirstMapFile(treeUriString: String): File? {
+    private fun resolveFirstMapFile(treeUriString: String, onProgress: (Int) -> Unit): File? {
         return try {
             val treeUri = Uri.parse(treeUriString)
             val documentFile = DocumentFile.fromTreeUri(context, treeUri) ?: return null
@@ -150,8 +181,24 @@ class MapController(
             if (cacheFile.exists() && cacheFile.length() == mapDoc.length()) {
                 return cacheFile
             }
+            val totalBytes = mapDoc.length().coerceAtLeast(1L)
+            var copiedBytes = 0L
+            var lastReportedPercent = -1
             context.contentResolver.openInputStream(mapDoc.uri)?.use { input ->
-                cacheFile.outputStream().use { output -> input.copyTo(output) }
+                cacheFile.outputStream().use { output ->
+                    val buffer = ByteArray(COPY_BUFFER_SIZE_BYTES)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        output.write(buffer, 0, read)
+                        copiedBytes += read
+                        val percent = ((copiedBytes * 100) / totalBytes).toInt().coerceIn(0, 100)
+                        if (percent != lastReportedPercent) {
+                            lastReportedPercent = percent
+                            onProgress(percent)
+                        }
+                    }
+                }
             }
             cacheFile
         } catch (e: Exception) {
@@ -375,24 +422,23 @@ class MapController(
     }
     /**
      * Значок положения пользователя — стрелка размером 1.5x от исходного
-     * (48dp вместо 32dp), поворачивается по курсу устройства.
+     * (48dp вместо 32dp).
      *
-     * ИЗМЕНЕНО: раньше здесь пересоздавался Bitmap через
-     * createRotatedMarkerBitmap() на каждое изменение курса >3° (см.
-     * angularDifference) — заметная нагрузка на GC при частых обновлениях
-     * датчика и "ступенчатое" вращение стрелки. Теперь позиция и угол
-     * просто передаются в RotatingUserMarkerLayer.updatePositionAndRotation(),
-     * который поворачивает Canvas на этапе отрисовки без единой аллокации —
-     * поэтому порог по углу больше не нужен, стрелка вращается так же
-     * плавно, как на экране компаса (см. RotatingUserMarkerLayer).
+     * ИЗМЕНЕНО: раньше был один updateUserPositionMarker(location, heading),
+     * вызывавшийся только из onLocationUpdated (т.е. только на GPS-фикс,
+     * редко — 5-10с). Курс при этом обновлялся "внутри" того же вызова —
+     * поэтому стрелка визуально дёргалась раз в несколько секунд, хотя сам
+     * курс от датчика приходит гораздо чаще. Разделено на updateUserPosition()
+     * (вызывается на GPS-фикс) и updateUserHeading() (вызывается на каждый
+     * тик heading, синхронно с MiniCompassView — см. MapActivity.onResume).
      */
-    fun updateUserPositionMarker(location: Location?, headingDegrees: Float) {
+    fun updateUserPosition(location: Location?) {
         val mapView = this.mapView ?: return
         val layer = userMarkerLayer ?: return
         if (location == null) return
         updateAccuracyCircle(mapView, location)
         val isFirstFix = !layer.hasPosition
-        layer.updatePositionAndRotation(LatLong(location.latitude, location.longitude), headingDegrees)
+        layer.updatePosition(LatLong(location.latitude, location.longitude))
         // Первая позиция — центрируем всегда, чтобы карта не стартовала
         // на "null island" (0,0), независимо от режима (сохранено из
         // прежней реализации на Marker).
@@ -407,6 +453,13 @@ class MapController(
         if (followModeEnabled) {
             mapView.model.mapViewPosition.center = LatLong(location.latitude, location.longitude)
         }
+    }
+    /** Вращает стрелку значка положения — вызывать на каждое значение из
+     * CompassSensorManager.heading, не только на GPS-фикс (см. комментарий
+     * updateUserPosition выше). Дёшево: RotatingUserMarkerLayer не
+     * пересоздаёт Bitmap, только просит перерисовку уже готового кадра. */
+    fun updateUserHeading(headingDegrees: Float) {
+        userMarkerLayer?.updateRotation(headingDegrees)
     }
     /**
      * Визуализация точности позиционирования — полупрозрачный круг вокруг
@@ -635,5 +688,9 @@ class MapController(
         private const val DEFAULT_ZOOM_LEVEL: Byte = 15
         // 1.5x от исходных 32dp (см. решение по ТЗ)
         private const val MARKER_SIZE_DP = 48
+        // НОВОЕ: размер буфера при копировании .map из SAF-Uri в cacheDir
+        // (см. resolveFirstMapFile) — 64 КБ баланс между частотой отчётов
+        // о прогрессе и накладными расходами на много мелких чтений.
+        private const val COPY_BUFFER_SIZE_BYTES = 64 * 1024
     }
 }

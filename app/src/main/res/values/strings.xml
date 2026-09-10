@@ -34,6 +34,8 @@
     <string name="menu_compass">Compass</string>
     <string name="menu_compass_settings">Compass settings</string>
     <string name="menu_offline_maps">Offline maps</string>
+    <!-- НОВОЕ: прогресс копирования большого .map файла в кэш при первом открытии -->
+    <string name="map_loading_progress">Loading map… %1$d%%</string>
     <string name="menu_calibration">Calibration</string>
     <string name="menu_info">About</string>
     <string name="menu_language">Language</string>
