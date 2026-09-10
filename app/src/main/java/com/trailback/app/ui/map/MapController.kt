@@ -468,9 +468,23 @@ class MapController(
      * месте через штатные setLatLong/setRadius Mapsforge — без пересоздания
      * слоя на каждый тик, чтобы не ломать порядок отрисовки (круг должен
      * оставаться под стрелкой положения).
+     *
+     * НОВОЕ: круг не рисуется при точности хуже ACCURACY_CIRCLE_MAX_METERS —
+     * при плохом GPS-фиксе (открытое небо не всегда доступно под кронами
+     * деревьев) круг радиусом в десятки метров закрывает половину экрана и
+     * визуально мешает больше, чем помогает. Если круг уже был на карте, а
+     * точность ухудшилась выше порога — он убирается, а не просто "замирает"
+     * на последнем валидном радиусе (иначе пользователь может принять
+     * устаревший круг за актуальный).
      */
     private fun updateAccuracyCircle(mapView: MapView, location: Location) {
-        val radiusMeters = location.accuracy.coerceAtLeast(1f)
+        val accuracyMeters = location.accuracy
+        if (!location.hasAccuracy() || accuracyMeters <= 0f || accuracyMeters > ACCURACY_CIRCLE_MAX_METERS) {
+            accuracyCircle?.let { mapView.layerManager.layers.remove(it) }
+            accuracyCircle = null
+            return
+        }
+        val radiusMeters = accuracyMeters.coerceAtLeast(1f)
         val existing = accuracyCircle
         if (existing == null) {
             val circle = Circle(
@@ -609,7 +623,7 @@ class MapController(
             ?: return null
         return projected.latitude to projected.longitude
     }
-    /** Пунктирная бирюзовая линия от текущей позиции до цели навигации —
+    /** Пунктирная фиолетовая линия от текущей позиции до цели навигации —
      * независима от homeLinePolyline, рисуется одновременно с ней. */
     fun updateNavigationTargetLine(current: Location?, target: Pair<Double, Double>?) {
         val mapView = this.mapView ?: return
@@ -628,7 +642,7 @@ class MapController(
         mapView.layerManager.layers.add(polyline)
         navigationTargetLine = polyline
     }
-    /** Маркер цели навигации — отдельная бирюзовая иконка, не связана с
+    /** Маркер цели навигации — отдельная фиолетовая иконка, не связана с
      * маркером точки входа или отмеченных мест. */
     fun updateNavigationTargetMarker(target: Pair<Double, Double>?) {
         val mapView = this.mapView ?: return
@@ -674,9 +688,9 @@ class MapController(
     }
     companion object {
         private const val ACCENT_COLOR_MAPSFORGE = 0xFFE65100.toInt()
-        // НОВОЕ: цвет для "взятия направления" — бирюзовый, чтобы визуально
+        // НОВОЕ: цвет для "взятия направления" — фиолетовый, чтобы визуально
         // не путать с оранжевой линией/стрелкой режима "Домой".
-        private const val NAVIGATION_TARGET_COLOR = 0xFF40E0D0.toInt()
+        private const val NAVIGATION_TARGET_COLOR = 0xFF9C27B0.toInt()
         private const val ZOOM_LEVEL_MIN: Byte = 2
         // Сколько промежуточных точек генерируется на один отрезок трека при
         // сглаживании Catmull-Rom. Больше — плавнее кривая, но больше точек
@@ -692,5 +706,13 @@ class MapController(
         // (см. resolveFirstMapFile) — 64 КБ баланс между частотой отчётов
         // о прогрессе и накладными расходами на много мелких чтений.
         private const val COPY_BUFFER_SIZE_BYTES = 64 * 1024
+        // НОВОЕ: круг точности не рисуется при худшей точности (см.
+        // updateAccuracyCircle). 15м — компромисс: строже 10м прятал бы круг
+        // почти постоянно в лесу под кронами деревьев (там типичная точность
+        // GPS 10-30м даже при исправно работающем приёмнике — это не сбой,
+        // а нормальные условия), а мягче 20-30м уже не спасает от растянутого
+        // на пол-экрана круга. Если в реальном использовании окажется, что
+        // порог слишком строгий/мягкий — единственное место для правки.
+        private const val ACCURACY_CIRCLE_MAX_METERS = 15f
     }
 }

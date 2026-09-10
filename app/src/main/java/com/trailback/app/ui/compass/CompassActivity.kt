@@ -252,8 +252,8 @@ class CompassActivity : KeepScreenOnActivity() {
         // курс устройства теперь берётся из CompassSensorManager без фильтра.
         private const val EMA_OLD_WEIGHT = 0.92f
         private const val EMA_NEW_WEIGHT = 0.08f
-        // НОВОЕ: цвет стрелки "взятия направления" — бирюзовый, отличается
+        // НОВОЕ: цвет стрелки "взятия направления" — фиолетовый, отличается
         // от оранжевого "Домой", чтобы пользователь не перепутал цели.
-        private const val DIRECTION_ARROW_COLOR = 0xFF40E0D0.toInt()
+        private const val DIRECTION_ARROW_COLOR = 0xFF9C27B0.toInt()
     }
 }
