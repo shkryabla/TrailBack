@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Простой силуэт смартфона — значок, движущийся по траектории
+         "восьмёрки" в CompassCalibrationHintView. Белая обводка снизу для
+         читаемости на любом фоне (тот же приём, что и в ic_entry_point_marker). -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:fillColor="#E65100"
+        android:pathData="M8,2h8c1.1,0 2,0.9 2,2v16c0,1.1 -0.9,2 -2,2H8c-1.1,0 -2,-0.9 -2,-2V4c0,-1.1 0.9,-2 2,-2z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M7,4.5h10v14H7z"/>
+    <path android:fillColor="#E65100" android:pathData="M12,20m-1.1,0a1.1,1.1 0,1 1,2.2 0a1.1,1.1 0,1 1,-2.2 0"/>
+</vector>
