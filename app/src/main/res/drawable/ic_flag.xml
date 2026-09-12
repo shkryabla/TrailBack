@@ -1,4 +1,9 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFF" android:pathData="M6,3v18h2v-7h9l-2,-4l2,-4h-9v-3z"/>
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="960" android:viewportHeight="960">
+    <!-- Material Symbols "flag" (Apache 2.0, google/material-design-icons) —
+         используется как иконка пункта меню "Сохранённые точки входа". -->
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFF" android:pathData="M200,-120v-680h360l16,80h224v400H520l-16,-80H280v280h-80ZM500,-560Zm86,160h134v-240H510l-16,-80H280v240h290l16,80Z"/>
+    </group>
 </vector>

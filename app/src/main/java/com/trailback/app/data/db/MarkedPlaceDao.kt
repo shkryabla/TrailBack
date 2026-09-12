@@ -10,6 +10,9 @@ interface MarkedPlaceDao {
     suspend fun insert(place: MarkedPlace): Long
     @Query("SELECT * FROM marked_places ORDER BY timestamp DESC")
     fun observeAll(): Flow<List<MarkedPlace>>
+    /** НОВОЕ: для BackupManager — разовый снимок всех записей. */
+    @Query("SELECT * FROM marked_places ORDER BY timestamp DESC")
+    suspend fun getAllOnce(): List<MarkedPlace>
     @Delete
     suspend fun delete(place: MarkedPlace)
 }

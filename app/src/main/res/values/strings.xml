@@ -36,6 +36,8 @@
     <string name="menu_offline_maps">Offline maps</string>
     <!-- НОВОЕ: прогресс копирования большого .map файла в кэш при первом открытии -->
     <string name="map_loading_progress">Loading map… %1$d%%</string>
+    <!-- НОВОЕ: пояснение про подпапку автобэкапа в той же папке -->
+    <string name="backup_folder_hint">A "trailback_backup" subfolder is automatically created here to store an up-to-date backup of your start points, marked places, and tracks — it survives even if the app is uninstalled.</string>
     <string name="menu_calibration">Calibration</string>
     <string name="menu_info">About</string>
     <string name="menu_language">Language</string>
@@ -56,7 +58,7 @@
     <string name="recovery_dialog_continue">Continue</string>
     <string name="recovery_dialog_cancel">Cancel</string>
     <string name="select_entry_point_title">Select this point?</string>
-    <string name="select_entry_point_locked_in_returning">Cannot change point while "Home" mode is active</string>
+    <string name="select_entry_point_locked_active_mode">Cannot change point while recording a route or "Home" mode is active</string>
     <string name="entry_point_set_active">Point set as active</string>
     <string name="menu_exit">Exit</string>
     <string name="exit_confirm_message">Are you sure you want to exit the app?</string>

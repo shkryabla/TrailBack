@@ -23,14 +23,29 @@
     <!-- Предупреждение о точности компаса: наложено поверх нижнего поля
          compassView (margin=24dp), НЕ участвует в его констрейнтах —
          размер и позиция самого компаса не меняются. Цвет #999999,
-         шрифт 16sp — см. решение по ТЗ. -->
+         шрифт 16sp — см. решение по ТЗ.
+         Кликабельно — открывает пункт меню "Калибровка" (см. CompassActivity).
+         ИСПРАВЛЕНО: ширина была wrap_content с констрейнтами на Start И End
+         одновременно, но без layout_constrainedWidth="true" — в ConstraintLayout
+         это означает, что wrap_content меряется БЕЗ учёта доступного места
+         между констрейнтами (виджет может стать шире экрана), а не
+         "ужимается" под него. Для длинного текста предупреждения это
+         сужало реальную кликабельную зону до сути неполной центральной
+         части строки — палец легко промахивался мимо. match_parent
+         (с теми же marginStart/End=16dp) убирает эту ловушку: TextView
+         переносится по словам как положено, а тач-область/ripple
+         покрывают всю строку целиком. -->
     <TextView
         android:id="@+id/compassWarningText"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="4dp"
         android:layout_marginStart="16dp"
         android:layout_marginEnd="16dp"
+        android:padding="8dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
         android:gravity="center"
         android:textSize="16sp"
         android:textColor="#999999"

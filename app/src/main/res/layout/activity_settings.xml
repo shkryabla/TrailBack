@@ -39,6 +39,17 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/menu_offline_maps" />
+            <!-- НОВОЕ: пояснение, что в этой же папке появится подпапка
+                 автобэкапа — иначе выглядело бы как непрошеная папка,
+                 возникшая сама собой (см. BackupManager). -->
+            <TextView
+                android:id="@+id/backupFolderHintText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:textColor="@color/text_gray"
+                android:textSize="13sp"
+                android:text="@string/backup_folder_hint" />
         </LinearLayout>
         <!-- Калибровка -->
         <LinearLayout

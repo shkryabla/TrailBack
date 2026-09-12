@@ -70,14 +70,18 @@ class EntryPointsActivity : KeepScreenOnActivity() {
     }
     /**
      * По тапу — диалог "Выбрать эту точку?". Смена активной точки
-     * заблокирована, пока активен режим "Домой" (см. решение по ТЗ).
-     * При подтверждении выбора приложение сразу переходит в режим "Домой"
-     * на выбранную точку (прямая пунктирная линия — маршрутных данных
-     * может не быть в памяти устройства, это ожидаемо, см. решение по ТЗ).
+     * заблокирована в ЛЮБОМ активном режиме — и RECORDING, и RETURNING
+     * (изменено по решению: раньше блокировался только RETURNING, но выбор
+     * старой точки во время активной записи "подвешивал" текущий трек, не
+     * давая его ни продолжить, ни корректно завершить через "Я на месте").
+     * При подтверждении выбора приложение переходит в режим "Домой" на
+     * выбранную точку — вместе с точкой подгружается и её трек (постоянное
+     * хранение, см. решение по ТЗ), отрисовывается уже полупрозрачным как
+     * архивный (см. MapController.updateTrackLine).
      */
     private fun onEntryPointTapped(app: TrailBackApp, point: EntryPoint) {
-        if (app.trackingStateStore.mode == TrackingMode.RETURNING) {
-            Toast.makeText(this, R.string.select_entry_point_locked_in_returning, Toast.LENGTH_SHORT).show()
+        if (app.trackingStateStore.mode != TrackingMode.IDLE) {
+            Toast.makeText(this, R.string.select_entry_point_locked_active_mode, Toast.LENGTH_SHORT).show()
             return
         }
         AlertDialog.Builder(this)
@@ -141,6 +145,11 @@ class EntryPointsAdapter(
         // Дата/время уже часть point.name (см. решение по ТЗ — формат
         // "Вход - сб. 05.09.26 г. 14:07"), координаты в списке не нужны.
         holder.binding.titleText.text = point.name
+        // НОВОЕ: item_menu_row.xml теперь содержит ImageView слева от текста
+        // (см. MenuAdapter) — тот же макет переиспользуется и здесь, ставим
+        // ту же иконку "флага", что и у пункта меню "Сохранённые точки
+        // входа", чтобы список не остался с пустым местом слева.
+        holder.binding.iconImage.setImageResource(R.drawable.ic_flag)
         holder.binding.root.setOnClickListener { onTap(point) }
         holder.binding.root.setOnLongClickListener {
             onLongPress(point)

@@ -3,12 +3,14 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
 import com.trailback.app.ui.common.KeepScreenOnActivity
 import com.trailback.app.BuildConfig
 import com.trailback.app.R
 import com.trailback.app.TrailBackApp
 import com.trailback.app.data.repository.NorthMode
 import com.trailback.app.databinding.ActivitySettingsBinding
+import kotlinx.coroutines.launch
 /**
  * Единый экран настроек с секциями (см. п.6.3 ТЗ, пункты 4–8).
  * Показывается только запрошенная секция — остальные view.GONE,
@@ -28,13 +30,23 @@ class SettingsActivity : KeepScreenOnActivity() {
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
+            // ИСПРАВЛЕНО: раньше брался только FLAG_GRANT_READ_URI_PERMISSION —
+            // офлайн-карты действительно только читаются. Но с появлением
+            // автобэкапа (см. BackupManager, пишет trailback_backup/ в эту
+            // же папку) той же папке нужно ещё и право на запись, иначе
+            // DocumentFile.createDirectory()/createFile() будут падать с
+            // SecurityException при любой попытке бэкапа.
             contentResolver.takePersistableUriPermission(
                 uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
             val app = application as TrailBackApp
             app.settingsStore.offlineMapsUri = uri.toString()
             updateMapsSectionText()
+            // НОВОЕ: именно в этот момент бэкапу впервые становится куда
+            // писать — запускаем сразу, не дожидаясь следующего изменения
+            // точек входа/отмеченных мест.
+            lifecycleScope.launch { app.backupManager.backupNow() }
         }
     }
     override fun onCreate(savedInstanceState: Bundle?) {

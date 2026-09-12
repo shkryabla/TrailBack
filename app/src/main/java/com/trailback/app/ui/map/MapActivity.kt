@@ -31,6 +31,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -478,6 +479,7 @@ class MapActivity : KeepScreenOnActivity() {
                                 timestamp = System.currentTimeMillis()
                             )
                         )
+                        app.backupManager.backupNow()
                     }
                 }
             }
@@ -526,6 +528,7 @@ class MapActivity : KeepScreenOnActivity() {
                                 timestamp = System.currentTimeMillis()
                             )
                         )
+                        app.backupManager.backupNow()
                     }
                 }
             }
@@ -636,6 +639,16 @@ class MapActivity : KeepScreenOnActivity() {
             // перезапуска приложения (см. решение по багу — п.5).
             // flatMapLatest сам отменяет предыдущую внутреннюю подписку при
             // каждой новой активной точке входа.
+            //
+            // НОВОЕ: .combine(viewModel.mode) — раньше updateTrackLine()
+            // вызывался ТОЛЬКО когда сама БД точек трека эмитила изменение
+            // (новая GPS-точка). При нажатии "Домой" запись в RECORDING
+            // прекращается, новых точек для этой entryPointId больше не
+            // появится — а линия должна в этот момент перекраситься в
+            // полупрозрачную (см. MapController.updateTrackLine). Без
+            // combine() это бы не происходило, пока не случится любое другое
+            // событие, дёргающее points-поток. combine пересобирает пару
+            // (points, mode) на изменение ЛЮБОГО из двух источников.
             viewModel.activeEntryPoint
                 .flatMapLatest { entryPoint ->
                     if (entryPoint == null) {
@@ -645,8 +658,9 @@ class MapActivity : KeepScreenOnActivity() {
                         app.trackingRepository.observeTrackForEntryPoint(entryPoint.id)
                     }
                 }
-                .collect { points ->
-                    mapController.updateTrackLine(points, viewModel.mode.value)
+                .combine(viewModel.mode) { points, mode -> points to mode }
+                .collect { (points, mode) ->
+                    mapController.updateTrackLine(points, mode)
                 }
         }
         lifecycleScope.launch {

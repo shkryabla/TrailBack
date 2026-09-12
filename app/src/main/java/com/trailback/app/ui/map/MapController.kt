@@ -333,10 +333,22 @@ class MapController(
         ))
     }
     /**
-     * Сплошная чёрная линия трека толщиной 4dp, только пока идёт запись.
+     * Чёрная линия трека толщиной 4dp.
      * ВАЖНО: без явного paint.setStyle(Style.STROKE) полилиния не рисуется —
      * дефолтный стиль Mapsforge Paint это FILL (это и было причиной бага
      * "трек не виден").
+     *
+     * ИЗМЕНЕНО (постоянное хранение треков, см. решение по ТЗ): раньше линия
+     * рисовалась ТОЛЬКО в RECORDING и пропадала в тот же момент, что и вход
+     * в "Домой" — то есть трек стирался с карты раньше, чем при "Я на
+     * месте". Теперь линия видна и в RECORDING (полная непрозрачность —
+     * "сейчас"), и в RETURNING (RETURNING_TRACK_LINE_ALPHA — притушенная,
+     * "уже пройденный путь"): это относится ОДИНАКОВО что к треку, только
+     * что записанному в этой же сессии (после нажатия "Домой"), что и к
+     * треку, поднятому из истории при выборе старой точки входа — оба
+     * случая переводят приложение в RETURNING, разницы между "свежий" и
+     * "архивный" сознательно не делаем (см. обсуждение). Прячется линия
+     * только в IDLE — то есть строго после "Я на месте", как и требовалось.
      *
      * Сглаживание острых углов: у Mapsforge НЕТ готового флага/параметра для
      * сглаживания полилиний — Polyline.draw() строит путь только прямыми
@@ -347,10 +359,11 @@ class MapController(
     fun updateTrackLine(points: List<TrackPoint>, mode: TrackingMode) {
         val mapView = this.mapView ?: return
         trackPolyline?.let { mapView.layerManager.layers.remove(it) }
-        if (mode != TrackingMode.RECORDING || points.size < 2) return
+        if (mode == TrackingMode.IDLE || points.size < 2) return
+        val alpha = if (mode == TrackingMode.RETURNING) RETURNING_TRACK_LINE_ALPHA else 0xFF
         val paintStroke = AndroidGraphicFactory.INSTANCE.createPaint().apply {
             setStyle(Style.STROKE)
-            color = 0xFF000000.toInt()
+            color = (alpha shl 24) // чёрный (RGB 000000) с переменной альфой
             strokeWidth = 4f * density
         }
         val polyline = Polyline(paintStroke, AndroidGraphicFactory.INSTANCE)
@@ -714,5 +727,8 @@ class MapController(
         // на пол-экрана круга. Если в реальном использовании окажется, что
         // порог слишком строгий/мягкий — единственное место для правки.
         private const val ACCURACY_CIRCLE_MAX_METERS = 15f
+        // НОВОЕ: непрозрачность линии трека в режиме RETURNING (0..255).
+        // 70% непрозрачности = 255 * 0.7 ≈ 179 (0xB3).
+        private const val RETURNING_TRACK_LINE_ALPHA = 0xB3
     }
 }

@@ -99,6 +99,32 @@ class CompassActivity : KeepScreenOnActivity() {
         // всех экранов и может иметь несколько подписчиков одновременно.
         app.compassSensorManager.northMode = app.settingsStore.northMode
         infoPanelController.updateRouteCounter()
+        setupCalibrationWarningClick()
+    }
+    /**
+     * Предупреждение о точности компаса кликабельно — по тапу открывает
+     * пункт меню "Калибровка" (SECTION_CALIBRATION: инструкция + анимированная
+     * подсказка-восьмёрка, см. CompassCalibrationHintView), а не "О
+     * приложении" — именно там и находится сама инструкция по калибровке,
+     * а не в общем описании функций приложения.
+     * Подчёркивание текста программно (а не через HTML-разметку в строковом
+     * ресурсе) — сам текст compass_warning описывает риск неточности
+     * компаса в целом, а не только калибровку, поэтому подчёркивать
+     * конкретное слово внутри строки не с чем; подчёркиваем весь текст как
+     * обычный визуальный сигнал "это ссылка".
+     */
+    private fun setupCalibrationWarningClick() {
+        binding.compassWarningText.paintFlags =
+            binding.compassWarningText.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+        binding.compassWarningText.setOnClickListener {
+            startActivity(
+                Intent(this, com.trailback.app.ui.menu.SettingsActivity::class.java)
+                    .putExtra(
+                        com.trailback.app.ui.menu.SettingsActivity.EXTRA_SECTION,
+                        com.trailback.app.ui.menu.SettingsActivity.SECTION_CALIBRATION
+                    )
+            )
+        }
     }
     override fun onStart() {
         super.onStart()

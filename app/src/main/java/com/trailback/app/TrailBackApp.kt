@@ -2,6 +2,7 @@ package com.trailback.app
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
+import com.trailback.app.data.backup.BackupManager
 import com.trailback.app.data.db.AppDatabase
 import com.trailback.app.data.repository.SettingsStore
 import com.trailback.app.data.repository.TrackingRepository
@@ -23,6 +24,11 @@ class TrailBackApp : Application() {
     lateinit var settingsStore: SettingsStore
         private set
     lateinit var trackingRepository: TrackingRepository
+        private set
+    // НОВОЕ: автоматический бэкап точек входа/отмеченных мест/треков в SAF-
+    // папку офлайн-карт (см. BackupManager) — данные должны пережить
+    // удаление приложения, а внутреннее хранилище Room этого не переживает.
+    lateinit var backupManager: BackupManager
         private set
     // НОВОЕ: единый на всё приложение экземпляр — раньше каждая Activity
     // (CompassActivity, MapActivity) создавала свой собственный, из-за чего
@@ -64,13 +70,21 @@ class TrailBackApp : Application() {
         database = AppDatabase.getInstance(this)
         trackingStateStore = TrackingStateStore(this)
         settingsStore = SettingsStore(this)
+        backupManager = BackupManager(
+            context = this,
+            entryPointDao = database.entryPointDao(),
+            markedPlaceDao = database.markedPlaceDao(),
+            trackPointDao = database.trackPointDao(),
+            settingsStore = settingsStore
+        )
         compassSensorManager = CompassSensorManager(this).apply {
             northMode = settingsStore.northMode
         }
         trackingRepository = TrackingRepository(
             entryPointDao = database.entryPointDao(),
             trackPointDao = database.trackPointDao(),
-            stateStore = trackingStateStore
+            stateStore = trackingStateStore,
+            backupManager = backupManager
         )
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) { startedActivityCount++ }
@@ -86,11 +100,15 @@ class TrailBackApp : Application() {
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
         })
         // 1) Если после краша прошло больше 72 часов — трек считается брошенным
-        //    и сбрасывается; 2) в любом случае подчищаем осиротевшие точки трека
-        //    от предыдущих сессий (см. TrackingRepository).
+        //    и сбрасывается; 2) подчищаем осиротевшие точки трека (реальные
+        //    сироты, см. TrackingRepository.purgeOrphanedTrackPoints);
+        //    3) НОВОЕ: бэкап на каждый старт приложения — подстраховка на
+        //    случай, если процесс был убит между изменением данных и
+        //    следующим естественным поводом для backupNow() (см. BackupManager).
         appScope.launch {
             trackingRepository.expireStaleSessionIfNeeded(System.currentTimeMillis())
             trackingRepository.purgeOrphanedTrackPoints()
+            backupManager.backupNow()
         }
     }
 }

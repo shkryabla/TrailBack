@@ -16,31 +16,31 @@ class MenuActivity : KeepScreenOnActivity() {
         binding = ActivityMenuBinding.inflate(layoutInflater)
         setContentView(binding.root)
         val items = listOf(
-            MenuItem(getString(com.trailback.app.R.string.menu_entry_points)) {
+            MenuItem(getString(com.trailback.app.R.string.menu_entry_points), com.trailback.app.R.drawable.ic_flag) {
                 startActivity(Intent(this, EntryPointsActivity::class.java))
             },
-            MenuItem(getString(com.trailback.app.R.string.menu_marked_places)) {
+            MenuItem(getString(com.trailback.app.R.string.menu_marked_places), com.trailback.app.R.drawable.ic_location_on) {
                 startActivity(Intent(this, MarkedPlacesActivity::class.java))
             },
-            MenuItem(getString(com.trailback.app.R.string.menu_compass)) {
+            MenuItem(getString(com.trailback.app.R.string.menu_compass), com.trailback.app.R.drawable.ic_explore) {
                 startActivity(Intent(this, CompassActivity::class.java))
             },
-            MenuItem(getString(com.trailback.app.R.string.menu_compass_settings)) {
+            MenuItem(getString(com.trailback.app.R.string.menu_compass_settings), com.trailback.app.R.drawable.ic_tune) {
                 startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_SECTION, SettingsActivity.SECTION_COMPASS))
             },
-            MenuItem(getString(com.trailback.app.R.string.menu_offline_maps)) {
+            MenuItem(getString(com.trailback.app.R.string.menu_offline_maps), com.trailback.app.R.drawable.ic_download_for_offline) {
                 startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_SECTION, SettingsActivity.SECTION_MAPS))
             },
-            MenuItem(getString(com.trailback.app.R.string.menu_calibration)) {
+            MenuItem(getString(com.trailback.app.R.string.menu_calibration), com.trailback.app.R.drawable.ic_compass_calibration) {
                 startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_SECTION, SettingsActivity.SECTION_CALIBRATION))
             },
-            MenuItem(getString(com.trailback.app.R.string.menu_info)) {
+            MenuItem(getString(com.trailback.app.R.string.menu_info), com.trailback.app.R.drawable.ic_info) {
                 startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_SECTION, SettingsActivity.SECTION_INFO))
             },
-            MenuItem(getString(com.trailback.app.R.string.menu_language)) {
+            MenuItem(getString(com.trailback.app.R.string.menu_language), com.trailback.app.R.drawable.ic_language) {
                 startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_SECTION, SettingsActivity.SECTION_LANGUAGE))
             },
-            MenuItem(getString(com.trailback.app.R.string.menu_exit)) {
+            MenuItem(getString(com.trailback.app.R.string.menu_exit), com.trailback.app.R.drawable.ic_logout) {
                 onExitTapped()
             }
         )
@@ -116,4 +116,6 @@ class MenuActivity : KeepScreenOnActivity() {
         const val EXTRA_AUTO_EXIT = "extra_auto_exit"
     }
 }
-data class MenuItem(val title: String, val onClick: () -> Unit)
+/** Иконки подобраны из Google Material Symbols (google/material-design-icons,
+ * Apache 2.0) — см. MenuActivity, drawable/ic_*.xml. */
+data class MenuItem(val title: String, val iconRes: Int, val onClick: () -> Unit)

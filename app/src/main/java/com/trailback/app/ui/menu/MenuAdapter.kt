@@ -13,6 +13,7 @@ class MenuAdapter(private val items: List<MenuItem>) :
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
         holder.binding.titleText.text = item.title
+        holder.binding.iconImage.setImageResource(item.iconRes)
         holder.binding.root.setOnClickListener { item.onClick() }
     }
     override fun getItemCount() = items.size

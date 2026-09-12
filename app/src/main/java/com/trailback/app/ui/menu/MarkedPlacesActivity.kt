@@ -34,7 +34,10 @@ class MarkedPlacesActivity : KeepScreenOnActivity() {
                     items = places,
                     onOpenInNavigation = ::openInNavigationApp,
                     onCopyCoordinates = ::copyCoordinates,
-                    onDelete = { place -> lifecycleScope.launch { app.database.markedPlaceDao().delete(place) } }
+                    onDelete = { place -> lifecycleScope.launch {
+                        app.database.markedPlaceDao().delete(place)
+                        app.backupManager.backupNow()
+                    } }
                 )
             }
         }
