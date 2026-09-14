@@ -1,7 +1,9 @@
 package com.trailback.app.ui.menu
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.trailback.app.ui.common.KeepScreenOnActivity
@@ -89,10 +91,44 @@ class SettingsActivity : KeepScreenOnActivity() {
             pickMapsFolder.launch(null)
         }
     }
+    /**
+     * ИЗМЕНЕНО: раньше показывался сырой content:// URI дерева (нечитаемо,
+     * с URL-кодированием) — теперь через DocumentsContract.getTreeDocumentId()
+     * достаём document ID SAF-дерева (для обычной памяти телефона выглядит
+     * как "primary:Download/offline_maps") и собираем из него привычный
+     * путь вида "storage/emulated/0/Download/offline_maps".
+     * ВАЖНО: это ТОЛЬКО отображение для пользователя — реальный доступ к
+     * файлам по-прежнему идёт через сам URI/DocumentFile (см. MapController),
+     * человекочитаемый путь никуда, кроме этого текста, не передаётся.
+     */
     private fun updateMapsSectionText() {
         val app = application as TrailBackApp
         val uri = app.settingsStore.offlineMapsUri
-        binding.mapsFolderText.text = uri ?: getString(R.string.menu_offline_maps)
+        binding.mapsFolderText.text = uri?.let { humanReadableTreePath(it) } ?: getString(R.string.menu_offline_maps)
+    }
+    private fun humanReadableTreePath(treeUriString: String): String {
+        return try {
+            val documentId = DocumentsContract.getTreeDocumentId(Uri.parse(treeUriString))
+            // Формат document ID у ExternalStorageProvider — "volume:relative/path",
+            // например "primary:Download/offline_maps" (встроенная память) или
+            // "1A2B-3C4D:Maps" (SD-карта/съёмный носитель — вместо "primary"
+            // там серийный идентификатор тома).
+            val separatorIndex = documentId.indexOf(':')
+            if (separatorIndex < 0) return documentId
+            val volume = documentId.substring(0, separatorIndex)
+            val relativePath = documentId.substring(separatorIndex + 1)
+            val volumeRoot = if (volume.equals("primary", ignoreCase = true)) {
+                "storage/emulated/0"
+            } else {
+                "storage/$volume"
+            }
+            if (relativePath.isBlank()) volumeRoot else "$volumeRoot/$relativePath"
+        } catch (e: Exception) {
+            // Провайдер не ExternalStorageProvider (облако/нестандартный SAF-
+            // источник) или парсинг не удался — показываем URI как есть,
+            // лучше нечитаемо, чем пусто/неверно.
+            treeUriString
+        }
     }
     private fun setupCalibrationSection() {
         binding.calibrationTitle.text = getString(R.string.calibration_instructions_title)

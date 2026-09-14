@@ -424,7 +424,7 @@ class MapController(
         val paintStroke = AndroidGraphicFactory.INSTANCE.createPaint().apply {
             setStyle(Style.STROKE)
             color = if (isReturning) ACCENT_COLOR_MAPSFORGE else 0xFF9E9E9E.toInt()
-            strokeWidth = (if (isReturning) 8f else 3f) * density
+            strokeWidth = (if (isReturning) 6f else 4f) * density
             setDashPathEffect(floatArrayOf(12f * density, 8f * density))
         }
         val polyline = Polyline(paintStroke, AndroidGraphicFactory.INSTANCE)
@@ -728,7 +728,7 @@ class MapController(
         // порог слишком строгий/мягкий — единственное место для правки.
         private const val ACCURACY_CIRCLE_MAX_METERS = 15f
         // НОВОЕ: непрозрачность линии трека в режиме RETURNING (0..255).
-        // 70% непрозрачности = 255 * 0.7 ≈ 179 (0xB3).
-        private const val RETURNING_TRACK_LINE_ALPHA = 0xB3
+        // 50% непрозрачности = 255 * 0.5 ≈ 128 (0x80).
+        private const val RETURNING_TRACK_LINE_ALPHA = 0x80
     }
 }

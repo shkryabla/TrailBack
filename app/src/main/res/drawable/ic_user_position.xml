@@ -1,8 +1,11 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="32dp" android:height="32dp" android:viewportWidth="32" android:viewportHeight="32">
+    <!-- ИЗМЕНЕНО: обводка была белой (#FFFFFF), стала графитовой —
+         тот же цвет, что и фон квадратных кнопок карты (panel_dark
+         #2A2A2A, см. bg_square_rounded_button.xml). -->
     <path
         android:fillColor="#E65100"
-        android:strokeColor="#FFFFFF"
+        android:strokeColor="#2A2A2A"
         android:strokeWidth="1.5"
         android:pathData="M16,2L26,28L16,22L6,28z"/>
 </vector>
