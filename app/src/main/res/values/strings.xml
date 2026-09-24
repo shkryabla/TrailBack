@@ -38,6 +38,10 @@
     <string name="map_loading_progress">Loading map… %1$d%%</string>
     <!-- НОВОЕ: пояснение про подпапку автобэкапа в той же папке -->
     <string name="backup_folder_hint">A "trailback_backup" subfolder is automatically created here to store an up-to-date backup of your start points, marked places, and tracks — it survives even if the app is uninstalled.</string>
+    <!-- НОВОЕ: подсказка + кнопка для ручного скачивания офлайн-карты по
+         федеральному округу (см. SettingsActivity) -->
+    <string name="download_map_hint_text">To find the right map, first figure out which federal district your region belongs to (e.g. search "[your region] federal district" or check Wikipedia). Then tap the button below to open the file list and download the .map file for your district.\n\nThe file server is provided by the Mapsforge project (github.com/mapsforge/mapsforge) and may be temporarily unavailable — if so, check the "Mapsforge map providers" page in their repository (docs/Mapsforge-Maps.md) for alternative sources.\n\nSome files are larger than 1 GB — downloading may take a while, especially on mobile data.</string>
+    <string name="download_map_open_list_button">Open map file list</string>
     <string name="menu_calibration">Calibration</string>
     <string name="menu_info">About</string>
     <string name="menu_language">Language</string>

@@ -26,6 +26,10 @@ class SettingsActivity : KeepScreenOnActivity() {
         const val SECTION_CALIBRATION = "calibration"
         const val SECTION_INFO = "info"
         const val SECTION_LANGUAGE = "language"
+        // НОВОЕ: список файлов офлайн-карт по федеральным округам (см.
+        // setupDownloadMapListButton) — сверено вручную на момент добавления,
+        // структура директории самим Mapsforge не гарантирована стабильной.
+        private const val MAPS_FILE_LIST_URL = "https://download.mapsforge.org/maps/v5/russia/"
     }
     private lateinit var binding: ActivitySettingsBinding
     private val pickMapsFolder = registerForActivityResult(
@@ -64,6 +68,7 @@ class SettingsActivity : KeepScreenOnActivity() {
         binding.languageSection.visibility = visibleIf(section == SECTION_LANGUAGE)
         setupCompassSection(app)
         setupMapsSection()
+        setupDownloadMapListButton()
         setupCalibrationSection()
         setupInfoSection()
         setupLanguageSection(app)
@@ -128,6 +133,22 @@ class SettingsActivity : KeepScreenOnActivity() {
             // источник) или парсинг не удался — показываем URI как есть,
             // лучше нечитаемо, чем пусто/неверно.
             treeUriString
+        }
+    }
+    /**
+     * ИЗМЕНЕНО: отказались от подбора файла по городу (справочник
+     * MapRegionCatalog + автодополнение) — избыточно для задачи. Вместо
+     * этого текстовая ссылка (не кнопка — кнопка "Офлайн карты" уже занята
+     * выбором локальной SAF-папки, это другое действие), открывающая
+     * список файлов карт по округам в браузере — пользователь сам
+     * определяет свой округ (подсказка в download_map_hint_text выше в
+     * layout) и скачивает нужный файл.
+     */
+    private fun setupDownloadMapListButton() {
+        binding.openMapsListLink.paintFlags =
+            binding.openMapsListLink.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+        binding.openMapsListLink.setOnClickListener {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MAPS_FILE_LIST_URL)))
         }
     }
     private fun setupCalibrationSection() {

@@ -50,6 +50,38 @@
                 android:textColor="@color/text_gray"
                 android:textSize="13sp"
                 android:text="@string/backup_folder_hint" />
+            <!-- ИЗМЕНЕНО: отказались от подбора округа по городу
+                 (справочник + автодополнение) — оказалось избыточно.
+                 Текстовая подсказка сверху + простая текстовая ссылка на
+                 список файлов (не кнопка — кнопка "Офлайн карты" выше уже
+                 занята выбором локальной папки, это разные действия).
+                 Пользователь сам определяет свой округ и переходит по
+                 ссылке скачать нужный файл (см. SettingsActivity). -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="20dp"
+                android:background="@color/info_panel_border" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/download_map_hint_text"
+                android:textColor="@color/text_gray"
+                android:textSize="14sp"
+                android:lineSpacingExtra="2dp"
+                android:layout_marginBottom="12dp" />
+            <TextView
+                android:id="@+id/openMapsListLink"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/download_map_open_list_button"
+                android:textColor="@color/accent_orange"
+                android:textSize="15sp"
+                android:padding="8dp"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true" />
         </LinearLayout>
         <!-- Калибровка -->
         <LinearLayout
