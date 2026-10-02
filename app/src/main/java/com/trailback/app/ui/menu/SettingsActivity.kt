@@ -49,10 +49,20 @@ class SettingsActivity : KeepScreenOnActivity() {
             val app = application as TrailBackApp
             app.settingsStore.offlineMapsUri = uri.toString()
             updateMapsSectionText()
-            // НОВОЕ: именно в этот момент бэкапу впервые становится куда
-            // писать — запускаем сразу, не дожидаясь следующего изменения
-            // точек входа/отмеченных мест.
-            lifecycleScope.launch { app.backupManager.backupNow() }
+            // ИСПРАВЛЕНО (баг потери данных при переустановке): раньше здесь
+            // сразу и безусловно вызывался backupNow() — на свежей установке
+            // Room пуста, и этот вызов молча перезаписывал существующий
+            // trailback_backup.json от предыдущей установки пустыми данными.
+            // Теперь сначала пробуем restoreIfPresent() — если бэкап найден,
+            // его содержимое тихо мержится в Room (см. BackupManager,
+            // конфликтующие id пропускаются, новые записи добавляются) —
+            // и только после этого делаем backupNow(), чтобы файл бэкапа
+            // остался консистентен с (возможно, только что восстановленным)
+            // состоянием БД.
+            lifecycleScope.launch {
+                app.backupManager.restoreIfPresent()
+                app.backupManager.backupNow()
+            }
         }
     }
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -75,7 +75,7 @@ class MarkedPlacesAdapter(
         holder.binding.openInNavigationButton.setOnClickListener { onOpenInNavigation(place) }
         holder.binding.copyButton.setOnClickListener { onCopyCoordinates(place) }
         holder.binding.deleteButton.setOnClickListener {
-            AlertDialog.Builder(holder.binding.root.context)
+            AlertDialog.Builder(holder.binding.root.context, R.style.TrailBackAlertDialogTheme)
                 .setMessage(place.name)
                 .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> onDelete(place) }
                 .setNegativeButton(R.string.arrived_dialog_no, null)

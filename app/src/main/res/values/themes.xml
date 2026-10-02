@@ -15,16 +15,70 @@
         <item name="android:padding">14dp</item>
         <item name="android:tint">@color/text_white</item>
     </style>
+    <!-- ИЗМЕНЕНО (п.3 правок):
+         - android:background заменён с backgroundTint@accent_orange на
+           кастомный bg_main_action_button (та же заливка + графитовая
+           обводка panel_dark, см. drawable);
+         - minWidth увеличен 156dp -> 172dp, чтобы вместить textSize 20sp
+           без переноса самого длинного варианта текста ("Я на месте");
+         - textSize увеличен на 2sp (18 -> 20), как и в диалогах (п.4). -->
     <style name="MainActionButton">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:minWidth">156dp</item>
+        <item name="android:minWidth">172dp</item>
         <item name="android:minHeight">62dp</item>
         <item name="android:paddingStart">26dp</item>
         <item name="android:paddingEnd">26dp</item>
-        <item name="android:backgroundTint">@color/accent_orange</item>
+        <item name="android:background">@drawable/bg_main_action_button</item>
         <item name="android:textColor">@color/text_white</item>
-        <item name="android:textSize">18sp</item>
+        <item name="android:textSize">20sp</item>
         <item name="android:textStyle">bold</item>
+        <item name="android:singleLine">true</item>
+    </style>
+    <!-- НОВОЕ (п.4 правок): единый переиспользуемый стиль для ВСЕХ
+         AlertDialog.Builder(this, ...) по проекту (MapActivity,
+         EntryPointsActivity, MarkedPlacesActivity, MenuActivity).
+         - textSize диалогового сообщения/заголовка +2sp;
+         - кнопки Да/Нет визуально оформлены (фон+обводка), а не голый
+           текст дефолтного TextButton — см. DialogActionButton ниже;
+         - android:textIsSelectable нет нужды трогать, переносы не
+           требуются отдельно — ширина кнопки/паддинги уже не дают тексту
+           переноситься при +2sp на стандартных Да/Нет/коротких подписях. -->
+    <style name="TrailBackAlertDialogTheme" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
+        <item name="android:background">@color/panel_dark</item>
+        <item name="android:windowTitleStyle">@style/TrailBackDialogTitleText</item>
+        <item name="android:textColorPrimary">@color/text_white</item>
+        <item name="buttonBarPositiveButtonStyle">@style/DialogActionButton.Positive</item>
+        <item name="buttonBarNegativeButtonStyle">@style/DialogActionButton.Negative</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/TrailBackDialogTitleText</item>
+        <item name="materialAlertDialogBodyTextStyle">@style/TrailBackDialogBodyText</item>
+    </style>
+    <style name="TrailBackDialogTitleText" parent="MaterialAlertDialog.MaterialComponents.Title.Text">
+        <item name="android:textSize">20sp</item>
+        <item name="android:textColor">@color/text_white</item>
+    </style>
+    <style name="TrailBackDialogBodyText" parent="MaterialAlertDialog.MaterialComponents.Body.Text">
+        <item name="android:textSize">17sp</item>
+        <item name="android:textColor">@color/text_gray</item>
+    </style>
+    <!-- Кнопки Да/Нет — фон + обводка вместо дефолтного "просто текста"
+         Material TextButton. Акцентный оранжевый фон для "Да" (основное
+         действие), нейтральная графитовая обводка для "Нет" (второстепенное). -->
+    <style name="DialogActionButton.Positive" parent="Widget.MaterialComponents.Button">
+        <item name="android:textSize">17sp</item>
+        <item name="android:minWidth">88dp</item>
+        <item name="backgroundTint">@color/accent_orange</item>
+        <item name="strokeColor">@color/panel_dark</item>
+        <item name="strokeWidth">1.5dp</item>
+        <item name="android:textColor">@color/text_white</item>
+        <item name="cornerRadius">10dp</item>
+    </style>
+    <style name="DialogActionButton.Negative" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="android:textSize">17sp</item>
+        <item name="android:minWidth">88dp</item>
+        <item name="strokeColor">@color/text_gray</item>
+        <item name="strokeWidth">1.5dp</item>
+        <item name="android:textColor">@color/text_white</item>
+        <item name="cornerRadius">10dp</item>
     </style>
 </resources>

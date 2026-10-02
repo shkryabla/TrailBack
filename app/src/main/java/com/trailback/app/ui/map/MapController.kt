@@ -606,14 +606,23 @@ class MapController(
         val canvasWidth = maxOf(iconSizePx.toFloat(), textWidth + horizontalPadding * 2).toInt()
         val textMetrics = textFillPaint.fontMetrics
         val textHeight = (textMetrics.descent - textMetrics.ascent)
-        val textGap = 2f * density
-        val totalHeight = (textHeight + textGap + iconSizePx).toInt()
+        // ИСПРАВЛЕНО (п.2 правок, "обводка и текст не должны наезжать"):
+        // textGap раньше (2dp) считался только от границ шрифта (ascent/
+        // descent), но textStrokePaint рисует STROKE-обводку текста шириной
+        // 3dp — она выступает за эти границы на strokeWidth/2 в каждую
+        // сторону. При textGap=2dp нижний край обводки (выступ ~1.5dp) мог
+        // визуально заходить на белую обводку иконки вплотную/внахлёст.
+        // Добавляем этот выступ явно в зазор и в верхний отступ канваса.
+        val strokeBleed = textStrokePaint.strokeWidth / 2f
+        val textGap = 4f * density + strokeBleed
+        val totalHeight = (strokeBleed + textHeight + textGap + iconSizePx).toInt()
         val androidBitmap = AndroidBitmapType.createBitmap(canvasWidth, totalHeight, AndroidBitmapType.Config.ARGB_8888)
         val canvas = AndroidCanvasType(androidBitmap)
-        canvas.drawText(label, canvasWidth / 2f, -textMetrics.ascent, textStrokePaint) // обводка снизу
-        canvas.drawText(label, canvasWidth / 2f, -textMetrics.ascent, textFillPaint) // заливка поверх
+        val textBaselineY = strokeBleed - textMetrics.ascent
+        canvas.drawText(label, canvasWidth / 2f, textBaselineY, textStrokePaint) // обводка снизу
+        canvas.drawText(label, canvasWidth / 2f, textBaselineY, textFillPaint) // заливка поверх
         val iconLeft = (canvasWidth - iconSizePx) / 2
-        val iconTop = (textHeight + textGap).toInt()
+        val iconTop = (strokeBleed + textHeight + textGap).toInt()
         iconDrawable?.setBounds(iconLeft, iconTop, iconLeft + iconSizePx, iconTop + iconSizePx)
         iconDrawable?.draw(canvas)
         val mapsforgeBitmap = AndroidGraphicFactory.INSTANCE.createBitmap(canvasWidth, totalHeight, true)

@@ -1,5 +1,13 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="36dp" android:height="36dp" android:viewportWidth="36" android:viewportHeight="36">
-    <path android:fillColor="#E65100" android:pathData="M18,2C11.4,2 6,7.4 6,14c0,9 12,20 12,20s12,-11 12,-20c0,-6.6 -5.4,-12 -12,-12z"/>
+    <!-- ИЗМЕНЕНО (п.2 правок): добавлена белая обводка вокруг силуэта пина
+         (strokeColor/strokeWidth на том же path) — MD3 location-pin читается
+         на любом фоне карты, не только на тёмном. Форма/пропорции самого
+         пина не менялись — это уже был MD3-силуэт "location_on". -->
+    <path
+        android:fillColor="#E65100"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:pathData="M18,2C11.4,2 6,7.4 6,14c0,9 12,20 12,20s12,-11 12,-20c0,-6.6 -5.4,-12 -12,-12z"/>
     <path android:fillColor="#FFFFFF" android:pathData="M18,9m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"/>
 </vector>

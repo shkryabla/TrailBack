@@ -92,7 +92,7 @@ class MenuActivity : KeepScreenOnActivity() {
             Toast.makeText(this, com.trailback.app.R.string.exit_locked_active_mode, Toast.LENGTH_SHORT).show()
             return
         }
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, com.trailback.app.R.style.TrailBackAlertDialogTheme)
             .setMessage(com.trailback.app.R.string.exit_confirm_message)
             .setPositiveButton(com.trailback.app.R.string.arrived_dialog_yes) { _, _ ->
                 val notificationManager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager

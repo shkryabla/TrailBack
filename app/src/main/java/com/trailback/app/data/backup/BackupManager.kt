@@ -2,8 +2,11 @@ package com.trailback.app.data.backup
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import com.trailback.app.data.db.EntryPoint
 import com.trailback.app.data.db.EntryPointDao
+import com.trailback.app.data.db.MarkedPlace
 import com.trailback.app.data.db.MarkedPlaceDao
+import com.trailback.app.data.db.TrackPoint
 import com.trailback.app.data.db.TrackPointDao
 import com.trailback.app.data.repository.SettingsStore
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +79,87 @@ class BackupManager(
         } catch (e: Exception) {
             // Бэкап — вспомогательная функция; сбой SAF/диска не должен
             // ронять основной сценарий (запись маршрута, отметка места).
+        }
+    }
+
+    /**
+     * НОВОЕ: устраняет баг потери данных при переустановке приложения —
+     * раньше при первом выборе папки карт (см. SettingsActivity.pickMapsFolder)
+     * сразу вызывался backupNow(), который БЕЗУСЛОВНО перезаписывал
+     * trailback_backup.json текущим (на свежей установке — ПУСТЫМ)
+     * состоянием Room, стирая существующий бэкап от предыдущей установки.
+     *
+     * Вызывать ДО первого backupNow() в этом же месте: если файл бэкапа
+     * найден — тихо восстанавливает его содержимое в Room (см.
+     * insertAllIgnoreConflict в каждом DAO) и возвращает true; если файла
+     * нет — ничего не делает и возвращает false, тогда вызывающий код
+     * создаёт бэкап впервые обычным backupNow().
+     *
+     * "Тихий merge" (по решению): если в Room на момент восстановления уже
+     * есть какие-то записи (папка карт была выбрана заново, а не сразу
+     * после установки), restore не затирает их и не спрашивает — записи с
+     * уже существующим id просто пропускаются (OnConflictStrategy.IGNORE),
+     * новые из бэкапа добавляются. Никакого диалога подтверждения.
+     *
+     * Порядок вставки важен: точки входа — до точек трека, иначе
+     * TrackPoint.entryPointId на момент вставки ссылался бы на ещё не
+     * существующую запись.
+     */
+    suspend fun restoreIfPresent(): Boolean = withContext(Dispatchers.IO) {
+        val treeUriString = settingsStore.offlineMapsUri ?: return@withContext false
+        try {
+            val treeUri = Uri.parse(treeUriString)
+            val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext false
+            val backupDir = root.findFile(BACKUP_FOLDER_NAME)?.takeIf { it.isDirectory }
+                ?: return@withContext false
+            val backupFile = backupDir.findFile(BACKUP_FILE_NAME) ?: return@withContext false
+            val jsonText = context.contentResolver.openInputStream(backupFile.uri)
+                ?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?: return@withContext false
+            val json = JSONObject(jsonText)
+            val entryPointsArray = json.optJSONArray("entryPoints") ?: JSONArray()
+            val markedPlacesArray = json.optJSONArray("markedPlaces") ?: JSONArray()
+            val trackPointsArray = json.optJSONArray("trackPoints") ?: JSONArray()
+            val entryPoints = (0 until entryPointsArray.length()).map { i ->
+                val o = entryPointsArray.getJSONObject(i)
+                EntryPoint(
+                    id = o.getLong("id"),
+                    latitude = o.getDouble("latitude"),
+                    longitude = o.getDouble("longitude"),
+                    timestamp = o.getLong("timestamp"),
+                    name = o.getString("name")
+                )
+            }
+            val markedPlaces = (0 until markedPlacesArray.length()).map { i ->
+                val o = markedPlacesArray.getJSONObject(i)
+                MarkedPlace(
+                    id = o.getLong("id"),
+                    name = o.getString("name"),
+                    latitude = o.getDouble("latitude"),
+                    longitude = o.getDouble("longitude"),
+                    timestamp = o.getLong("timestamp")
+                )
+            }
+            val trackPoints = (0 until trackPointsArray.length()).map { i ->
+                val o = trackPointsArray.getJSONObject(i)
+                TrackPoint(
+                    id = o.getLong("id"),
+                    entryPointId = o.getLong("entryPointId"),
+                    latitude = o.getDouble("latitude"),
+                    longitude = o.getDouble("longitude"),
+                    timestamp = o.getLong("timestamp"),
+                    accuracyMeters = o.getDouble("accuracyMeters").toFloat()
+                )
+            }
+            // Порядок: точки входа раньше точек трека (см. комментарий выше).
+            entryPointDao.insertAllIgnoreConflict(entryPoints)
+            markedPlaceDao.insertAllIgnoreConflict(markedPlaces)
+            trackPointDao.insertAllIgnoreConflict(trackPoints)
+            true
+        } catch (e: Exception) {
+            // Повреждённый/нечитаемый файл бэкапа не должен ронять выбор
+            // папки — просто считаем, что восстанавливать было нечего.
+            false
         }
     }
 

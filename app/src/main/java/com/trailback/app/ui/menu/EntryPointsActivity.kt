@@ -84,7 +84,7 @@ class EntryPointsActivity : KeepScreenOnActivity() {
             Toast.makeText(this, R.string.select_entry_point_locked_active_mode, Toast.LENGTH_SHORT).show()
             return
         }
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.select_entry_point_title)
             .setMessage(point.name)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
@@ -107,21 +107,21 @@ class EntryPointsActivity : KeepScreenOnActivity() {
     }
     /** Тройное подтверждение массовой очистки (см. п.6.3 ТЗ и решение по формулировкам). */
     private fun showClearConfirmation1(app: TrailBackApp) {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setMessage(R.string.clear_entry_points_warning_1)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> showClearConfirmation2(app) }
             .setNegativeButton(R.string.arrived_dialog_no, null)
             .show()
     }
     private fun showClearConfirmation2(app: TrailBackApp) {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setMessage(R.string.clear_entry_points_warning_2)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> showClearConfirmation3(app) }
             .setNegativeButton(R.string.arrived_dialog_no, null)
             .show()
     }
     private fun showClearConfirmation3(app: TrailBackApp) {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setMessage(R.string.clear_entry_points_warning_3)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
                 lifecycleScope.launch { app.trackingRepository.clearAllEntryPoints() }

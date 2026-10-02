@@ -340,7 +340,7 @@ class MapActivity : KeepScreenOnActivity() {
         }
     }
     private fun showRecoveryDialog(app: TrailBackApp) {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.recovery_dialog_title)
             .setMessage(R.string.recovery_dialog_message)
             .setCancelable(false)
@@ -387,7 +387,7 @@ class MapActivity : KeepScreenOnActivity() {
     private fun confirmStart() {
         val location = lastKnownLocation
         if (location != null && location.accuracy > LOW_ACCURACY_THRESHOLD_METERS) {
-            AlertDialog.Builder(this)
+            AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
                 .setMessage(R.string.low_accuracy_warning)
                 .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> showStartConfirmDialog() }
                 .setNegativeButton(R.string.arrived_dialog_no, null)
@@ -397,7 +397,7 @@ class MapActivity : KeepScreenOnActivity() {
         }
     }
     private fun showStartConfirmDialog() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.confirm_start_title)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
                 lastKnownLocation?.let {
@@ -409,7 +409,7 @@ class MapActivity : KeepScreenOnActivity() {
             .show()
     }
     private fun confirmHome() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.confirm_home_title)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
                 viewModel.onHomeConfirmed()
@@ -425,7 +425,7 @@ class MapActivity : KeepScreenOnActivity() {
      * сбросе режима возврата (п.4).
      */
     private fun confirmManualArrival() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.arrived_dialog_title)
             .setMessage(R.string.arrived_dialog_message)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> confirmManualArrivalReset() }
@@ -433,7 +433,7 @@ class MapActivity : KeepScreenOnActivity() {
             .show()
     }
     private fun confirmManualArrivalReset() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setMessage(R.string.manual_arrival_reset_confirm_message)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
                 viewModel.onArrivedConfirmed()
@@ -444,7 +444,7 @@ class MapActivity : KeepScreenOnActivity() {
             .show()
     }
     private fun showArrivedDialog() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.arrived_dialog_title)
             .setMessage(R.string.arrived_dialog_message)
             .setCancelable(false)
@@ -462,7 +462,7 @@ class MapActivity : KeepScreenOnActivity() {
         val input = androidx.appcompat.widget.AppCompatEditText(this).apply {
             hint = getString(R.string.mark_place_hint)
         }
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.mark_place_dialog_title)
             .setView(input)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
@@ -490,7 +490,7 @@ class MapActivity : KeepScreenOnActivity() {
     /** Точка входа в фичу — вызывается из mapController.onLongPress. Работает
      * в любом TrackingMode (см. решение по ТЗ), диалог не завязан на режим. */
     private fun showLongPressActionDialog(latitude: Double, longitude: Double) {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.long_press_dialog_title)
             .setItems(
                 arrayOf(
@@ -512,7 +512,7 @@ class MapActivity : KeepScreenOnActivity() {
         val input = androidx.appcompat.widget.AppCompatEditText(this).apply {
             hint = getString(R.string.mark_place_hint)
         }
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.mark_place_dialog_title)
             .setView(input)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
@@ -549,7 +549,7 @@ class MapActivity : KeepScreenOnActivity() {
     }
     /** Ручная отмена через кнопку слева от главной. */
     private fun confirmCancelNavigationTarget() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setMessage(R.string.cancel_direction_confirm_message)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> clearNavigationTarget() }
             .setNegativeButton(R.string.arrived_dialog_no, null)
@@ -559,7 +559,7 @@ class MapActivity : KeepScreenOnActivity() {
      * + точность), что и "Вы вернулись!" в режиме "Домой" (см. решение по ТЗ,
      * HomeArrivalDetector переиспользуется в TrackingService как есть). */
     private fun showDirectionArrivedDialog() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setTitle(R.string.direction_arrived_dialog_title)
             .setMessage(R.string.direction_arrived_dialog_message)
             .setCancelable(false)

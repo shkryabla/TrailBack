@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- НОВОЕ (п.3 правок): фон главной кнопки автомата состояний (Старт/Домой/
+     Я на месте) — заливка акцентным цветом + тонкая графитовая обводка
+     panel_dark (тот же цвет, что и у квадратных кнопок SquareIconButton),
+     чтобы кнопка визуально перекликалась с остальной правой колонкой. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/accent_orange" />
+    <corners android:radius="16dp" />
+    <stroke android:width="1.5dp" android:color="@color/panel_dark" />
+</shape>

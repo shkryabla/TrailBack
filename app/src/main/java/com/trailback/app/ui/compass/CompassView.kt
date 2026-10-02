@@ -79,6 +79,25 @@ class CompassView @JvmOverloads constructor(
         color = Color.WHITE
         style = Paint.Style.FILL
     }
+    // НОВОЕ (п.6 правок, по референсу): вертикальная черта над треугольником
+    // указателя курса — на референсе указатель составной (треугольник + линия),
+    // а не голый треугольник, как было у нас.
+    private val courseTriangleStemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+    }
+    // НОВОЕ: акцентная (оранжевая) засечка и подпись на 0° — по референсу
+    // выделяется цветом именно нулевая отметка шкалы.
+    private val accentTickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ACCENT_COLOR
+        strokeWidth = 5f
+    }
+    private val accentLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ACCENT_COLOR
+        textAlign = Paint.Align.CENTER
+        textSize = 85f
+    }
     private val homeArrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ACCENT_COLOR
         style = Paint.Style.FILL
@@ -109,13 +128,20 @@ class CompassView @JvmOverloads constructor(
         // значения в градусах) — см. решение по ТЗ. На 0/90/180/270 вместо
         // числа рисуются буквы сторон света (см. цикл labelAngles ниже), не
         // дублируем то же место цифрой.
+        // ИЗМЕНЕНО (п.6 правок, по референсу): засечка на 0° красится
+        // акцентным оранжевым вместо общего DKGRAY — единственная выделенная
+        // отметка шкалы.
         val cardinalDegrees = setOf(0, 90, 180, 270)
         for (deg in 0 until 360 step 5) {
             val isMajor = deg % 30 == 0
             val angleRad = Math.toRadians((deg - 90).toDouble())
             val outer = radius
             val inner = if (isMajor) radius - 30f else radius - 15f
-            val tickLinePaint = if (isMajor) majorTickPaint else tickPaint
+            val tickLinePaint = when {
+                deg == 0 -> accentTickPaint
+                isMajor -> majorTickPaint
+                else -> tickPaint
+            }
             val x1 = cx + (outer * Math.cos(angleRad)).toFloat()
             val y1 = cy + (outer * Math.sin(angleRad)).toFloat()
             val x2 = cx + (inner * Math.cos(angleRad)).toFloat()
@@ -131,20 +157,31 @@ class CompassView @JvmOverloads constructor(
                 canvas.restore()
             }
         }
+        // ИЗМЕНЕНО (п.6 правок, по референсу): буквы сторон света смещены
+        // ближе к центру (было radius - 55f — вплотную к засечкам/цифрам,
+        // из-за крупного шрифта 85f визуально наезжали на шкалу). Теперь
+        // отдельный, заметно меньший радиус — буквы явно внутри диска, не
+        // задевают ни засечки, ни подписи градусов рядом с ними.
         val labels = if (isRussian) listOf("С", "В", "Ю", "З") else listOf("N", "E", "S", "W")
         val labelAngles = listOf(0, 90, 180, 270)
+        val cardinalLabelRadius = radius * 0.55f
         for (i in labelAngles.indices) {
             val angleRad = Math.toRadians((labelAngles[i] - 90).toDouble())
-            val labelRadius = radius - 55f
-            val x = cx + (labelRadius * Math.cos(angleRad)).toFloat()
-            val y = cy + (labelRadius * Math.sin(angleRad)).toFloat() + 14f
+            val x = cx + (cardinalLabelRadius * Math.cos(angleRad)).toFloat()
+            val y = cy + (cardinalLabelRadius * Math.sin(angleRad)).toFloat() + 14f
+            // Буква на 0° (С/N) — тот же акцент, что и засечка на 0°.
+            val paint = if (labelAngles[i] == 0) accentLabelPaint else labelPaint
             canvas.save()
             canvas.rotate(headingDegrees, x, y) // буквы остаются читаемыми (не переворачиваются)
-            canvas.drawText(labels[i], x, y, labelPaint)
+            canvas.drawText(labels[i], x, y, paint)
             canvas.restore()
         }
     }
     private fun drawFixedCourseTriangle(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        // ИЗМЕНЕНО (п.6 правок, по референсу): указатель курса теперь
+        // составной — треугольник + примыкающая снизу вертикальная черта,
+        // как на референс-скрине (было — только голый треугольник).
+        canvas.drawLine(cx, cy - radius + 25f, cx, cy - radius + 45f, courseTriangleStemPaint)
         val path = Path().apply {
             moveTo(cx, cy - radius - 10f)
             lineTo(cx - 20f, cy - radius + 25f)

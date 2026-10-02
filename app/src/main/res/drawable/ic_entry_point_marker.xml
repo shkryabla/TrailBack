@@ -1,13 +1,16 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="32dp" android:height="32dp" android:viewportWidth="32" android:viewportHeight="32">
-    <!-- Белая обводка снизу, шире основной линии -->
+    <!-- ИЗМЕНЕНО (п.2 правок): крестик заменён на MD3-пин с флажком внутри —
+         тот же семейный силуэт "location pin", что у ic_marked_place_pin
+         (белая обводка + оранжевая заливка), отличие только по смыслу
+         (флажок = точка старта, точка = отмеченное место), а не по форме,
+         как было раньше (крестик визуально выбивался из общего стиля). -->
     <path
+        android:fillColor="#E65100"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="6"
-        android:pathData="M6,6L26,26M26,6L6,26"/>
-    <!-- Основной крестик поверх обводки -->
-    <path
-        android:strokeColor="#E65100"
-        android:strokeWidth="3.5"
-        android:pathData="M6,6L26,26M26,6L6,26"/>
+        android:strokeWidth="1.6"
+        android:pathData="M16,2C10.2,2 5.5,6.7 5.5,12.4c0,8 10.5,17.6 10.5,17.6s10.5,-9.6 10.5,-17.6C26.5,6.7 21.8,2 16,2z"/>
+    <!-- Флажок: древко + полотно, оба белые — читаются поверх оранжевой заливки. -->
+    <path android:fillColor="#FFFFFF" android:pathData="M11.2,7h1.3v11h-1.3z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M12.5,7.2L20.5,9.7L12.5,12.2z"/>
 </vector>

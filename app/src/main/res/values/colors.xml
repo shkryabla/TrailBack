@@ -11,8 +11,9 @@
     <color name="dashed_line_gray">#9E9E9E</color>
     <!-- Трек активной записи -->
     <color name="track_line_black">#000000</color>
-    <!-- Верхняя информационная панель (единая светлая тема на всю ширину) -->
-    <color name="info_panel_bg">#DCE3E8</color>
+    <!-- Верхняя информационная панель (единая светлая тема на всю ширину).
+         ИЗМЕНЕНО: #D5D5D5 — точная инверсия panel_dark (#2A2A2A), по решению. -->
+    <color name="info_panel_bg">#D5D5D5</color>
     <color name="info_panel_border">#2A2A2A</color>
     <color name="info_panel_label">#2A2A2A</color>
     <color name="counter_black">#000000</color>

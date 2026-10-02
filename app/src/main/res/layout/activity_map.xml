@@ -118,13 +118,20 @@
         app:layout_constraintBottom_toBottomOf="@id/mainActionButton"
         app:layout_constraintTop_toTopOf="@id/mainActionButton"
         app:layout_constraintEnd_toStartOf="@id/mainActionButton" />
-    <!-- Главная кнопка — теперь включает и роль "Я на месте" в режиме "Домой" -->
+    <!-- Главная кнопка — теперь включает и роль "Я на месте" в режиме "Домой".
+         ИЗМЕНЕНО (п.3 правок): marginEnd был 24dp (через общий layout_margin),
+         как и у SquareIconButton'ов правой колонки — 8dp. Разные отступы при
+         одинаковом constraintEnd_toEndOf="parent" давали разные фактические
+         правые края (правило ConstraintLayout: край = parent - margin).
+         marginBottom оставлен 24dp — по низу отступ от края экрана не
+         участвовал в жалобе и здесь не менялся. -->
     <Button
         android:id="@+id/mainActionButton"
         style="@style/MainActionButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="24dp"
+        android:layout_marginBottom="24dp"
+        android:layout_marginEnd="8dp"
         android:text="@string/button_start"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />

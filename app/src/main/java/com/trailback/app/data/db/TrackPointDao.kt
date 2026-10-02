@@ -1,12 +1,20 @@
 package com.trailback.app.data.db
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 @Dao
 interface TrackPointDao {
     @Insert
     suspend fun insert(point: TrackPoint)
+    /** НОВОЕ: для BackupManager.restoreIfPresent() — см. EntryPointDao.insertAllIgnoreConflict.
+     * ВАЖНО: восстанавливать точки трека нужно ПОСЛЕ entryPoints — иначе
+     * entryPointId будет ссылаться в никуда до вставки родительской записи
+     * (внешний ключ здесь не объявлен как строгий FK, но по смыслу порядок
+     * важен для консистентности данных). */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAllIgnoreConflict(points: List<TrackPoint>)
     @Query("SELECT * FROM track_points WHERE entryPointId = :entryPointId ORDER BY timestamp ASC")
     fun observeForEntryPoint(entryPointId: Long): Flow<List<TrackPoint>>
     @Query("SELECT * FROM track_points WHERE entryPointId = :entryPointId ORDER BY timestamp ASC")
