@@ -87,16 +87,15 @@ class CompassView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         strokeWidth = 4f
     }
-    // НОВОЕ: акцентная (оранжевая) засечка и подпись на 0° — по референсу
-    // выделяется цветом именно нулевая отметка шкалы.
-    private val accentTickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    // ИЗМЕНЕНО: по второму референсу (скрин с буквой N) акцент на 0° — это
+    // НЕ окрашенная засечка и НЕ окрашенная буква (так было криво — см.
+    // "красная буква С"), а отдельный маленький треугольник-маркер рядом
+    // с засечкой 0°. Засечка и буква на 0° теперь рисуются обычным цветом
+    // наравне со всеми остальными (accentTickPaint/accentLabelPaint убраны
+    // из использования в drawDial), а этот Paint — только для маркера.
+    private val accentMarkerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ACCENT_COLOR
-        strokeWidth = 5f
-    }
-    private val accentLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ACCENT_COLOR
-        textAlign = Paint.Align.CENTER
-        textSize = 85f
+        style = Paint.Style.FILL
     }
     private val homeArrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ACCENT_COLOR
@@ -124,30 +123,27 @@ class CompassView @JvmOverloads constructor(
     }
     private fun drawDial(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
         canvas.drawCircle(cx, cy, radius, dialPaint)
-        // Засечки каждые 5° (мелкие) и каждые 30° (крупные, с подписью
-        // значения в градусах) — см. решение по ТЗ. На 0/90/180/270 вместо
-        // числа рисуются буквы сторон света (см. цикл labelAngles ниже), не
-        // дублируем то же место цифрой.
-        // ИЗМЕНЕНО (п.6 правок, по референсу): засечка на 0° красится
-        // акцентным оранжевым вместо общего DKGRAY — единственная выделенная
-        // отметка шкалы.
-        val cardinalDegrees = setOf(0, 90, 180, 270)
-        for (deg in 0 until 360 step 5) {
+        // ИЗМЕНЕНО: засечки раньше шли каждые 5°, теперь каждые 2° (по
+        // просьбе) — 30 всё так же кратно 2, крупные засечки (каждые 30°)
+        // не съезжают. Критично: шаг 2° означает четыре "обычных" тика между
+        // соседними крупными — на 5°-сетке было по пять, но важна не
+        // кратность пяти, а то, что 30 делится на 2 нацело (делится).
+        for (deg in 0 until 360 step 2) {
             val isMajor = deg % 30 == 0
             val angleRad = Math.toRadians((deg - 90).toDouble())
             val outer = radius
             val inner = if (isMajor) radius - 30f else radius - 15f
-            val tickLinePaint = when {
-                deg == 0 -> accentTickPaint
-                isMajor -> majorTickPaint
-                else -> tickPaint
-            }
+            val tickLinePaint = if (isMajor) majorTickPaint else tickPaint
             val x1 = cx + (outer * Math.cos(angleRad)).toFloat()
             val y1 = cy + (outer * Math.sin(angleRad)).toFloat()
             val x2 = cx + (inner * Math.cos(angleRad)).toFloat()
             val y2 = cy + (inner * Math.sin(angleRad)).toFloat()
             canvas.drawLine(x1, y1, x2, y2, tickLinePaint)
-            if (isMajor && deg !in cardinalDegrees) {
+            // ИЗМЕНЕНО: цифра рисуется на КАЖДОЙ крупной отметке, включая
+            // 0/90/180/270 — раньше там цифра пропускалась в пользу буквы
+            // стороны света; теперь (по просьбе) дублируем — и буква, и
+            // цифра одновременно, как и на остальных крупных засечках.
+            if (isMajor) {
                 val labelRadius = radius - 55f
                 val lx = cx + (labelRadius * Math.cos(angleRad)).toFloat()
                 val ly = cy + (labelRadius * Math.sin(angleRad)).toFloat() + 11f
@@ -157,11 +153,10 @@ class CompassView @JvmOverloads constructor(
                 canvas.restore()
             }
         }
-        // ИЗМЕНЕНО (п.6 правок, по референсу): буквы сторон света смещены
-        // ближе к центру (было radius - 55f — вплотную к засечкам/цифрам,
-        // из-за крупного шрифта 85f визуально наезжали на шкалу). Теперь
-        // отдельный, заметно меньший радиус — буквы явно внутри диска, не
-        // задевают ни засечки, ни подписи градусов рядом с ними.
+        // Буквы сторон света — ближе к центру, чем засечки/цифры (не наезжают).
+        // ИЗМЕНЕНО: акцентная окраска буквы на 0° убрана — все четыре буквы
+        // равноправны (см. комментарий у accentMarkerPaint выше), акцент
+        // теперь — отдельный маленький треугольник-маркер (drawZeroAccentMarker).
         val labels = if (isRussian) listOf("С", "В", "Ю", "З") else listOf("N", "E", "S", "W")
         val labelAngles = listOf(0, 90, 180, 270)
         val cardinalLabelRadius = radius * 0.55f
@@ -169,23 +164,55 @@ class CompassView @JvmOverloads constructor(
             val angleRad = Math.toRadians((labelAngles[i] - 90).toDouble())
             val x = cx + (cardinalLabelRadius * Math.cos(angleRad)).toFloat()
             val y = cy + (cardinalLabelRadius * Math.sin(angleRad)).toFloat() + 14f
-            // Буква на 0° (С/N) — тот же акцент, что и засечка на 0°.
-            val paint = if (labelAngles[i] == 0) accentLabelPaint else labelPaint
             canvas.save()
             canvas.rotate(headingDegrees, x, y) // буквы остаются читаемыми (не переворачиваются)
-            canvas.drawText(labels[i], x, y, paint)
+            canvas.drawText(labels[i], x, y, labelPaint)
             canvas.restore()
         }
+        drawZeroAccentMarker(canvas, cx, cy, radius)
+    }
+    /**
+     * НОВОЕ: маленький акцентный треугольник у засечки 0° — по второму
+     * референсу (скрин с буквой N), где ровно такой же компактный красный
+     * треугольник сидит между кольцом шкалы и буквой "N", а не сама засечка
+     * или буква окрашены. У нас используется фирменный оранжевый вместо
+     * красного — проект уже унифицирован на этот акцентный цвет (см.
+     * ACCENT_COLOR, используется в стрелке "Домой" и т.д.).
+     *
+     * Рисуется ВНУТРИ того же повёрнутого (-headingDegrees) канваса, что и
+     * остальная шкала в drawDial — поэтому, как и засечки, вращается вместе
+     * с диском и не требует встречного поворота (в отличие от букв/цифр,
+     * которым встречный поворот нужен, чтобы оставаться читаемыми).
+     */
+    private fun drawZeroAccentMarker(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        val outer = radius - 32f
+        val inner = radius - 48f
+        val halfWidth = 8f
+        val path = Path().apply {
+            moveTo(cx, cy - outer)
+            lineTo(cx - halfWidth, cy - inner)
+            lineTo(cx + halfWidth, cy - inner)
+            close()
+        }
+        canvas.drawPath(path, accentMarkerPaint)
     }
     private fun drawFixedCourseTriangle(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
-        // ИЗМЕНЕНО (п.6 правок, по референсу): указатель курса теперь
-        // составной — треугольник + примыкающая снизу вертикальная черта,
-        // как на референс-скрине (было — только голый треугольник).
-        canvas.drawLine(cx, cy - radius + 25f, cx, cy - radius + 45f, courseTriangleStemPaint)
+        // ИЗМЕНЕНО: геометрия подогнана точно под референс (скрин с буквой N) —
+        // треугольник у́же (halfWidth 20->14) и компактнее по высоте, апекс
+        // снаружи кольца, основание ровно на кромке (было — на 25px внутрь,
+        // слишком глубоко перекрывало зону засечек). Стебель — тонкая черта
+        // от основания треугольника вниз ровно до глубины крупных засечек
+        // (radius-30, та же величина, что и inner у isMajor в drawDial),
+        // чтобы визуально продолжать треугольник до кольца шкалы, как на
+        // референсе, а не уходить глубже или мельче этой отметки.
+        val apexY = cy - radius - 16f
+        val baseY = cy - radius + 2f
+        val halfWidth = 14f
+        canvas.drawLine(cx, baseY, cx, cy - radius + 30f, courseTriangleStemPaint)
         val path = Path().apply {
-            moveTo(cx, cy - radius - 10f)
-            lineTo(cx - 20f, cy - radius + 25f)
-            lineTo(cx + 20f, cy - radius + 25f)
+            moveTo(cx, apexY)
+            lineTo(cx - halfWidth, baseY)
+            lineTo(cx + halfWidth, baseY)
             close()
         }
         canvas.drawPath(path, courseTrianglePaint)
