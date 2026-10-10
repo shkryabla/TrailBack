@@ -130,6 +130,20 @@ class CompassView @JvmOverloads constructor(
             drawHomeArrow(canvas, cx, cy, radius)
         }
     }
+    /**
+     * НОВОЕ: canvas.drawText() позиционирует текст по БАЗОВОЙ ЛИНИИ, а не
+     * по визуальному центру глифа — чтобы точка (x,y) оказалась ровно по
+     * центру буквы/цифры, к y нужно прибавить это смещение (стандартная
+     * формула через Paint.FontMetrics: -(ascent+descent)/2). Раньше вместо
+     * этого использовались захардкоженные "+11f"/"+14f", подобранные на
+     * глаз под старые размеры шрифта — при любом изменении textSize (как
+     * недавно у degreeLabelPaint) подгонка переставала совпадать, из-за
+     * чего подписи визуально "плыли" относительно истинного центра диска.
+     */
+    private fun verticalCenterOffset(paint: Paint): Float {
+        val fm = paint.fontMetrics
+        return -(fm.ascent + fm.descent) / 2f
+    }
     private fun drawDial(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
         canvas.drawCircle(cx, cy, radius, dialPaint)
         // ИЗМЕНЕНО: засечки раньше шли каждые 5°, теперь каждые 2° (по
@@ -156,9 +170,25 @@ class CompassView @JvmOverloads constructor(
             // стороны света; теперь (по просьбе) дублируем — и буква, и
             // цифра одновременно, как и на остальных крупных засечках.
             if (isMajor) {
-                val labelRadius = radius - 55f
+                // ИСПРАВЛЕНО (по просьбе — "подписи градусов наезжают на
+                // лимб/деления"): раньше отступ 55px был откалиброван под
+                // ГОРИЗОНТАЛЬНЫЙ текст (запас нужен только по высоте
+                // строки). После поворота цифры по касательной (см. ниже)
+                // на отметках вроде 90°/270° текст разворачивается на 90° —
+                // его исходная ШИРИНА (у двух-трёхзначных чисел на 42px
+                // шрифте — больше высоты) превращается в радиальный вылет
+                // наружу, к кольцу. 75px — отступ с запасом под худший
+                // случай (поворот ровно поперёк радиуса).
+                val labelRadius = radius - 75f
                 val lx = cx + (labelRadius * Math.cos(angleRad)).toFloat()
-                val ly = cy + (labelRadius * Math.sin(angleRad)).toFloat() + 11f
+                // ИСПРАВЛЕНО (по просьбе — "видишь смещение?"): "+11f" было
+                // приблизительной подгонкой на глаз под старый textSize=32f;
+                // после увеличения шрифта до 42f (см. правку компаса раньше)
+                // она перестала попадать в истинный визуальный центр глифа.
+                // verticalCenterOffset() считает точный сдвиг через реальную
+                // метрику шрифта (ascent/descent), а не на глаз.
+                val ly = cy + (labelRadius * Math.sin(angleRad)).toFloat() +
+                    verticalCenterOffset(degreeLabelPaint)
                 // ИЗМЕНЕНО (по просьбе): раньше цифра встречно поворачивалась
                 // на +headingDegrees, чтобы всегда оставаться строго
                 // горизонтальной независимо от положения на диске — теперь
@@ -184,7 +214,10 @@ class CompassView @JvmOverloads constructor(
         for (i in labelAngles.indices) {
             val angleRad = Math.toRadians((labelAngles[i] - 90).toDouble())
             val x = cx + (cardinalLabelRadius * Math.cos(angleRad)).toFloat()
-            val y = cy + (cardinalLabelRadius * Math.sin(angleRad)).toFloat() + 14f
+            // ИСПРАВЛЕНО (по просьбе — та же природа, что и у цифр выше):
+            // "+14f" на глаз заменён на точный расчёт через fontMetrics.
+            val y = cy + (cardinalLabelRadius * Math.sin(angleRad)).toFloat() +
+                verticalCenterOffset(labelPaint)
             canvas.save()
             canvas.rotate(headingDegrees, x, y) // буквы остаются читаемыми (не переворачиваются)
             canvas.drawText(labels[i], x, y, labelPaint)
