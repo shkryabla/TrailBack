@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background_dark">
@@ -10,13 +11,31 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:layout_constraintTop_toTopOf="parent" />
+    <!-- НОВОЕ (по просьбе): текст "буква стороны + курс в градусах"
+         (например "СЗ 311"), который раньше рисовался крупным текстом в
+         центре диска компаса (см. CompassView — drawCenterHeadingText()
+         убрана), теперь вынесен сюда, над самим диском. Обновляется в
+         CompassActivity.updateHeadingLabel() на каждый тик курса. -->
+    <TextView
+        android:id="@+id/headingLabelText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:textColor="@color/text_white"
+        android:textSize="32sp"
+        android:textStyle="bold"
+        tools:text="СЗ 311"
+        app:layout_constraintTop_toBottomOf="@id/topInfoPanel"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
     <com.trailback.app.ui.compass.CompassView
         android:id="@+id/compassView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_margin="24dp"
         app:layout_constraintDimensionRatio="1:1"
-        app:layout_constraintTop_toBottomOf="@id/topInfoPanel"
+        app:layout_constraintTop_toBottomOf="@id/headingLabelText"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />

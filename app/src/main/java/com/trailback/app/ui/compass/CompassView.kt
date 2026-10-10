@@ -10,8 +10,13 @@ import com.trailback.app.R
 /**
  * Полноэкранный компас (п.6.2 ТЗ), реализующий подтверждённую механику:
  * - вращающийся диск (градусы + буквы N/E/S/W или С/Ю/З/В) — угол = -heading;
+ *   цифры градусов повёрнуты по касательной к окружности (см. drawDial),
+ *   буквы сторон света остаются горизонтальными;
  * - фиксированный треугольник курса статичен сверху в обоих режимах;
- * - в обычном режиме в центре текст курса+буквы, в режиме "Домой" центр пуст;
+ * - текущий курс+сторона света (было в центре) вынесены наружу, над
+ *   диском — см. CompassActivity/activity_compass.xml, headingLabelText;
+ *   центр диска в NORMAL пуст, в режиме "Домой"/"взятия направления" —
+ *   стрелка;
  * - красная стрелка на точку старта — только в режиме "Домой", независимый угол
  *   (bearingToHome - heading), исчезает по достижении точки.
  */
@@ -71,17 +76,9 @@ class CompassView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
         textSize = 85f
     }
-    private val headingTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textAlign = Paint.Align.CENTER
-        textSize = 125f
-        isFakeBoldText = true
-    }
-    private val subLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.LTGRAY
-        textAlign = Paint.Align.CENTER
-        textSize = 65f
-    }
+    // ИЗМЕНЕНО: headingTextPaint/subLabelPaint удалены — использовались
+    // только в drawCenterHeadingText(), которая убрана вместе с центральным
+    // текстом (см. onDraw выше, текст теперь снаружи, над диском).
     private val courseTrianglePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.FILL
@@ -122,9 +119,14 @@ class CompassView @JvmOverloads constructor(
         drawDial(canvas, cx, cy, radius)
         canvas.restore()
         drawFixedCourseTriangle(canvas, cx, cy, radius)
-        if (mode == Mode.NORMAL) {
-            drawCenterHeadingText(canvas, cx, cy)
-        } else {
+        // ИЗМЕНЕНО (по просьбе): крупный текст курса+буквы стороны света
+        // убран из центра диска — вынесен наружу, над компасом, отдельным
+        // TextView (см. activity_compass.xml/headingLabelText и
+        // CompassActivity.updateHeadingLabel(), которая использует
+        // compassPointLabel() ниже). В NORMAL-режиме центр диска теперь
+        // просто пуст — drawCenterHeadingText() как функция удалена за
+        // ненадобностью.
+        if (mode != Mode.NORMAL) {
             drawHomeArrow(canvas, cx, cy, radius)
         }
     }
@@ -157,8 +159,17 @@ class CompassView @JvmOverloads constructor(
                 val labelRadius = radius - 55f
                 val lx = cx + (labelRadius * Math.cos(angleRad)).toFloat()
                 val ly = cy + (labelRadius * Math.sin(angleRad)).toFloat() + 11f
+                // ИЗМЕНЕНО (по просьбе): раньше цифра встречно поворачивалась
+                // на +headingDegrees, чтобы всегда оставаться строго
+                // горизонтальной независимо от положения на диске — теперь
+                // наоборот, поворот ровно на deg (её собственный угол на
+                // шкале), без компенсации headingDegrees. Эта часть канваса
+                // уже повёрнута на -headingDegrees снаружи (см. onDraw), так
+                // что цифра вращается вместе с диском и "ложится" по его
+                // контуру (как цифры на ободе механического компаса/секундомера),
+                // а не всегда стоит ровно.
                 canvas.save()
-                canvas.rotate(headingDegrees, lx, ly) // цифры остаются читаемыми
+                canvas.rotate(deg.toFloat(), lx, ly)
                 canvas.drawText(deg.toString(), lx, ly, degreeLabelPaint)
                 canvas.restore()
             }
@@ -225,11 +236,6 @@ class CompassView @JvmOverloads constructor(
         }
         canvas.drawPath(path, courseTrianglePaint)
     }
-    private fun drawCenterHeadingText(canvas: Canvas, cx: Float, cy: Float) {
-        val roundedHeading = ((headingDegrees + 0.5f).toInt()) % 360
-        canvas.drawText(roundedHeading.toString(), cx, cy, headingTextPaint)
-        canvas.drawText(compassPointLabel(headingDegrees), cx, cy + 80f, subLabelPaint)
-    }
     private fun drawHomeArrow(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
         canvas.save()
         canvas.rotate(arrowScreenAngleDegrees, cx, cy)
@@ -246,7 +252,10 @@ class CompassView @JvmOverloads constructor(
         canvas.drawPath(path, homeArrowPaint)
         canvas.restore()
     }
-    private fun compassPointLabel(heading: Float): String {
+    /** ИЗМЕНЕНО: было private — теперь используется снаружи, в
+     * CompassActivity.updateHeadingLabel(), для вынесенного над диском
+     * текста "буква стороны + градус" (см. onDraw/drawDial выше). */
+    fun compassPointLabel(heading: Float): String {
         val pointsRu = listOf("С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ")
         val pointsEn = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
         val points = if (isRussian) pointsRu else pointsEn

@@ -162,9 +162,19 @@ class CompassActivity : KeepScreenOnActivity() {
             app.compassSensorManager.heading.collect { heading ->
                 currentHeadingDegrees = heading
                 binding.compassView.headingDegrees = heading
+                updateHeadingLabel(heading)
                 recomputeArrow()
             }
         }
+    }
+    /** НОВОЕ: текст "буква стороны + курс в градусах" (например "СЗ 311"),
+     * вынесенный над диском компаса (см. activity_compass.xml,
+     * headingLabelText) — раньше рисовался внутри CompassView по центру
+     * диска. Формат — буква, затем градус, по образцу, который попросили. */
+    private fun updateHeadingLabel(heading: Float) {
+        val roundedHeading = ((heading + 0.5f).toInt()) % 360
+        val point = binding.compassView.compassPointLabel(heading)
+        binding.headingLabelText.text = "$point $roundedHeading"
     }
     override fun onPause() {
         val app = application as TrailBackApp
