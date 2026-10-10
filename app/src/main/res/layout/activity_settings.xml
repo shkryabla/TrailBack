@@ -96,7 +96,7 @@
                 android:textColor="@color/text_white"
                 android:textSize="18sp"
                 android:textStyle="bold" />
-            <!-- НОВОЕ: анимированная подсказка (значок телефона движется по
+            <!-- Анимированная подсказка (значок телефона движется по
                  траектории "восьмёрки") — наглядная иллюстрация жеста из
                  calibrationText ниже. См. CompassCalibrationHintView. -->
             <com.trailback.app.ui.menu.CompassCalibrationHintView

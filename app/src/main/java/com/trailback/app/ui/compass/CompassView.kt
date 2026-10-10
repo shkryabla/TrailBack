@@ -47,17 +47,24 @@ class CompassView @JvmOverloads constructor(
     }
     private val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.DKGRAY
-        strokeWidth = 3f
+        strokeWidth = 2.5f
     }
-    // Крупные засечки каждые 30° — толще мелких (см. решение по ТЗ).
+    // ИЗМЕНЕНО (по референсу): на скрине разница между обычными и
+    // 30-градусными засечками — в первую очередь ТОЛЩИНА (крупные заметно
+    // жирнее), а не длина (она отличается не сильно) — раньше у нас было
+    // наоборот: длина отличалась в 2 раза (15/30px), а толщина почти не
+    // отличалась (3/5px). Толщину крупных увеличил существенно (5->8),
+    // мелкие чуть утончил (3->2.5) для более чёткого контраста; разницу в
+    // длине сократил (см. inner в drawDial: было 15/30, стало 22/32).
     private val majorTickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.DKGRAY
-        strokeWidth = 5f
+        color = Color.LTGRAY
+        strokeWidth = 8f
     }
+    // ИЗМЕНЕНО: шрифт цифр градусов увеличен (32 -> 42) по просьбе.
     private val degreeLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.LTGRAY
         textAlign = Paint.Align.CENTER
-        textSize = 32f
+        textSize = 42f
     }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -132,7 +139,10 @@ class CompassView @JvmOverloads constructor(
             val isMajor = deg % 30 == 0
             val angleRad = Math.toRadians((deg - 90).toDouble())
             val outer = radius
-            val inner = if (isMajor) radius - 30f else radius - 15f
+            // ИЗМЕНЕНО (по референсу): разница в длине между мелкими и
+            // крупными засечками сокращена (было 15/30 — 2x, стало 22/32 —
+            // акцент сделан на толщине majorTickPaint выше, а не на длине).
+            val inner = if (isMajor) radius - 32f else radius - 22f
             val tickLinePaint = if (isMajor) majorTickPaint else tickPaint
             val x1 = cx + (outer * Math.cos(angleRad)).toFloat()
             val y1 = cy + (outer * Math.sin(angleRad)).toFloat()
@@ -197,18 +207,16 @@ class CompassView @JvmOverloads constructor(
         canvas.drawPath(path, accentMarkerPaint)
     }
     private fun drawFixedCourseTriangle(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
-        // ИЗМЕНЕНО: геометрия подогнана точно под референс (скрин с буквой N) —
-        // треугольник у́же (halfWidth 20->14) и компактнее по высоте, апекс
-        // снаружи кольца, основание ровно на кромке (было — на 25px внутрь,
-        // слишком глубоко перекрывало зону засечек). Стебель — тонкая черта
-        // от основания треугольника вниз ровно до глубины крупных засечек
-        // (radius-30, та же величина, что и inner у isMajor в drawDial),
-        // чтобы визуально продолжать треугольник до кольца шкалы, как на
-        // референсе, а не уходить глубже или мельче этой отметки.
-        val apexY = cy - radius - 16f
-        val baseY = cy - radius + 2f
-        val halfWidth = 14f
-        canvas.drawLine(cx, baseY, cx, cy - radius + 30f, courseTriangleStemPaint)
+        // ИЗМЕНЕНО: по просьбе белый треугольник увеличен вдвое (apex-смещение
+        // 16->32, halfWidth 14->28, итоговая высота 18->36px — ровно x2).
+        // Основание чуть глубже вдвинуто внутрь кольца (было +2, стало +4) —
+        // пропорционально возросшей общей высоте. Стебель по-прежнему
+        // доходит ровно до глубины крупных засечек (radius-32, тот же inner,
+        // что и у isMajor в drawDial, см. длины засечек выше).
+        val apexY = cy - radius - 32f
+        val baseY = cy - radius + 4f
+        val halfWidth = 28f
+        canvas.drawLine(cx, baseY, cx, cy - radius + 32f, courseTriangleStemPaint)
         val path = Path().apply {
             moveTo(cx, apexY)
             lineTo(cx - halfWidth, baseY)
