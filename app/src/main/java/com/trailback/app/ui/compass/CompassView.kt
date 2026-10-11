@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.util.AttributeSet
 import android.view.View
 import com.trailback.app.R
@@ -66,14 +67,17 @@ class CompassView @JvmOverloads constructor(
         strokeWidth = 8f
     }
     // ИЗМЕНЕНО: шрифт цифр градусов увеличен (32 -> 42) по просьбе.
+    // textAlign больше не CENTER — центрирование теперь делается вручную,
+    // по РЕАЛЬНОМУ чернильному прямоугольнику текста (см. drawCenteredText
+    // ниже), а не по формуле на основе шрифта.
     private val degreeLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.LTGRAY
-        textAlign = Paint.Align.CENTER
+        textAlign = Paint.Align.LEFT
         textSize = 42f
     }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        textAlign = Paint.Align.CENTER
+        textAlign = Paint.Align.LEFT
         textSize = 85f
     }
     // ИЗМЕНЕНО: headingTextPaint/subLabelPaint удалены — использовались
@@ -130,19 +134,40 @@ class CompassView @JvmOverloads constructor(
             drawHomeArrow(canvas, cx, cy, radius)
         }
     }
+    // Переиспользуемый Rect — чтобы не аллоцировать объект на каждый вызов
+    // drawCenteredText() внутри onDraw (вызывается десятки раз за кадр).
+    private val textBoundsRect = Rect()
     /**
-     * НОВОЕ: canvas.drawText() позиционирует текст по БАЗОВОЙ ЛИНИИ, а не
-     * по визуальному центру глифа — чтобы точка (x,y) оказалась ровно по
-     * центру буквы/цифры, к y нужно прибавить это смещение (стандартная
-     * формула через Paint.FontMetrics: -(ascent+descent)/2). Раньше вместо
-     * этого использовались захардкоженные "+11f"/"+14f", подобранные на
-     * глаз под старые размеры шрифта — при любом изменении textSize (как
-     * недавно у degreeLabelPaint) подгонка переставала совпадать, из-за
-     * чего подписи визуально "плыли" относительно истинного центра диска.
+     * НАЙДЕНА РЕАЛЬНАЯ ПРИЧИНА смещения (не магические числа, а конкретный
+     * баг в подходе к центрированию):
+     *
+     * Paint.Align.CENTER центрирует текст по ШИРИНЕ ПРОДВИЖЕНИЯ (advance
+     * width, с учётом служебных отступов шрифта слева/справа от символа),
+     * а не по фактической границе видимых пикселей (ink bounds) — для
+     * большинства шрифтов они близки, но не идентичны.
+     *
+     * Хуже то, что предыдущая версия центрировала по вертикали через
+     * `-(fontMetrics.ascent + fontMetrics.descent) / 2` — а это ОБЩАЯ
+     * характеристика шрифта: ascent/descent заданы с учётом САМЫХ высоких
+     * и САМЫХ низких возможных символов шрифта (включая строчные с
+     * хвостами под строкой — "у", "р", "ц" и т.п.). Ни цифры, ни наши
+     * заглавные буквы (С, В, Ю, З / N, E, S, W) под базовую линию не
+     * опускаются — т.е. descent для НИХ фактически равен нулю, но формула
+     * всё равно вычитала полный шрифтовой descent, системно утягивая
+     * подписи ВНИЗ от истинного визуального центра. Для засечек (чистая
+     * геометрия, никакого шрифта) это смещение не действует — отсюда и
+     * видимый разъезд "текст против кольца".
+     *
+     * Исправление — спросить у Paint РЕАЛЬНЫЙ прямоугольник пикселей
+     * конкретной отрисовываемой строки через getTextBounds() и
+     * отцентрировать именно по нему (textAlign переключён на LEFT выше,
+     * чтобы не конфликтовать с этим ручным расчётом).
      */
-    private fun verticalCenterOffset(paint: Paint): Float {
-        val fm = paint.fontMetrics
-        return -(fm.ascent + fm.descent) / 2f
+    private fun drawCenteredText(canvas: Canvas, text: String, cx: Float, cy: Float, paint: Paint) {
+        paint.getTextBounds(text, 0, text.length, textBoundsRect)
+        val drawX = cx - (textBoundsRect.left + textBoundsRect.right) / 2f
+        val drawY = cy - (textBoundsRect.top + textBoundsRect.bottom) / 2f
+        canvas.drawText(text, drawX, drawY, paint)
     }
     private fun drawDial(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
         canvas.drawCircle(cx, cy, radius, dialPaint)
@@ -181,14 +206,7 @@ class CompassView @JvmOverloads constructor(
                 // случай (поворот ровно поперёк радиуса).
                 val labelRadius = radius - 75f
                 val lx = cx + (labelRadius * Math.cos(angleRad)).toFloat()
-                // ИСПРАВЛЕНО (по просьбе — "видишь смещение?"): "+11f" было
-                // приблизительной подгонкой на глаз под старый textSize=32f;
-                // после увеличения шрифта до 42f (см. правку компаса раньше)
-                // она перестала попадать в истинный визуальный центр глифа.
-                // verticalCenterOffset() считает точный сдвиг через реальную
-                // метрику шрифта (ascent/descent), а не на глаз.
-                val ly = cy + (labelRadius * Math.sin(angleRad)).toFloat() +
-                    verticalCenterOffset(degreeLabelPaint)
+                val ly = cy + (labelRadius * Math.sin(angleRad)).toFloat()
                 // ИЗМЕНЕНО (по просьбе): раньше цифра встречно поворачивалась
                 // на +headingDegrees, чтобы всегда оставаться строго
                 // горизонтальной независимо от положения на диске — теперь
@@ -200,7 +218,7 @@ class CompassView @JvmOverloads constructor(
                 // а не всегда стоит ровно.
                 canvas.save()
                 canvas.rotate(deg.toFloat(), lx, ly)
-                canvas.drawText(deg.toString(), lx, ly, degreeLabelPaint)
+                drawCenteredText(canvas, deg.toString(), lx, ly, degreeLabelPaint)
                 canvas.restore()
             }
         }
@@ -214,13 +232,10 @@ class CompassView @JvmOverloads constructor(
         for (i in labelAngles.indices) {
             val angleRad = Math.toRadians((labelAngles[i] - 90).toDouble())
             val x = cx + (cardinalLabelRadius * Math.cos(angleRad)).toFloat()
-            // ИСПРАВЛЕНО (по просьбе — та же природа, что и у цифр выше):
-            // "+14f" на глаз заменён на точный расчёт через fontMetrics.
-            val y = cy + (cardinalLabelRadius * Math.sin(angleRad)).toFloat() +
-                verticalCenterOffset(labelPaint)
+            val y = cy + (cardinalLabelRadius * Math.sin(angleRad)).toFloat()
             canvas.save()
             canvas.rotate(headingDegrees, x, y) // буквы остаются читаемыми (не переворачиваются)
-            canvas.drawText(labels[i], x, y, labelPaint)
+            drawCenteredText(canvas, labels[i], x, y, labelPaint)
             canvas.restore()
         }
         drawZeroAccentMarker(canvas, cx, cy, radius)

@@ -29,13 +29,16 @@
         app:layout_constraintTop_toBottomOf="@id/topInfoPanel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
-    <!-- ИЗМЕНЕНО (по просьбе — "придвинь ближе к диску, отступ на высоту
-         шрифта градусов"): раньше отступ сверху был тем же 24dp, что и у
-         остальных сторон (общий layout_margin), из-за чего между
-         headingLabelText и диском оставался непропорционально большой
-         пустой промежуток. marginTop теперь отдельно и заметно меньше —
-         примерно равен высоте строки текста headingLabelText (32sp),
-         остальные стороны (Start/End/Bottom) по-прежнему 24dp. -->
+    <!-- ИСПРАВЛЕНО (повторно, по просьбе): предыдущее уменьшение marginTop
+         (24dp -> 16dp) почти не дало эффекта, потому что основной "воздух"
+         создаёт не внешний margin, а ВНУТРЕННИЙ отступ самого CompassView —
+         radius = minOf(w,h)/2 * 0.85f (см. onDraw) сознательно оставляет
+         15% пустого поля внутри вью под треугольник-указатель НАД кольцом.
+         Это внутреннее поле не зависит от внешнего margin и никуда не
+         делось при прошлой правке. Теперь внешний отступ убран практически
+         до нуля — видимый зазор до кольца формирует только это встроенное
+         15%-поле (которое и так нужно треугольнику, его дальше ужимать
+         нельзя, иначе треугольник обрежется по верхнему краю вью). -->
     <com.trailback.app.ui.compass.CompassView
         android:id="@+id/compassView"
         android:layout_width="0dp"
@@ -43,7 +46,7 @@
         android:layout_marginStart="24dp"
         android:layout_marginEnd="24dp"
         android:layout_marginBottom="24dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="0dp"
         app:layout_constraintDimensionRatio="1:1"
         app:layout_constraintTop_toBottomOf="@id/headingLabelText"
         app:layout_constraintBottom_toBottomOf="parent"
