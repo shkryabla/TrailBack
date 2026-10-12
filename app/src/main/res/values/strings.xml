@@ -70,6 +70,7 @@
     <string name="manual_arrival_reset_confirm_message">Are you sure? Return mode to the starting point will be reset!</string>
     <!-- НОВОЕ: "Взятие направления" (long-press on map) -->
     <string name="long_press_dialog_title">What do you want to do with this point?</string>
+    <string name="long_press_requires_map">Unavailable without a loaded map — no landmarks visible on the ground</string>
     <string name="long_press_save_place">Save to marked places</string>
     <string name="long_press_take_direction">Take direction here</string>
     <string name="cancel_direction_confirm_message">Cancel taking direction?</string>

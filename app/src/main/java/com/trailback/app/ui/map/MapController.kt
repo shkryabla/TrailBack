@@ -680,6 +680,22 @@ class MapController(
         mapView.layerManager.layers.add(marker)
         navigationTargetMarker = marker
     }
+    /**
+     * НОВОЕ: true, только если на экране сейчас реально отображается карта
+     * (офлайн-тайлы Mapsforge или онлайн-тайлы OSM) — false на заглушке
+     * (нет ни офлайн-карты, ни интернета, либо идёт копирование большого
+     * .map файла и тайлы ещё не готовы, см. setupMap). mapView == null
+     * ровно в этих случаях: setupMap() сбрасывает его в null перед
+     * показом заглушки и выставляет заново только в showOfflineMap()/
+     * showOnlineMap() — тот же сигнал, которым уже пользуются canZoomIn()/
+     * canZoomOut() ниже (те тоже просто return false, если mapView==null).
+     *
+     * Используется в MapActivity, чтобы запретить долгий тап (сохранение
+     * места / взятие направления) без визуальной подложки — без карты
+     * пользователь не видит ориентиров на местности и не может осмысленно
+     * выбрать точку.
+     */
+    fun isMapLoaded(): Boolean = mapView != null
     fun canZoomIn(): Boolean {
         val position = mapView?.model?.mapViewPosition ?: return false
         return position.zoomLevel < position.zoomLevelMax

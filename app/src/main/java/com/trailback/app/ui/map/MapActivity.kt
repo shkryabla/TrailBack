@@ -11,6 +11,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import com.trailback.app.ui.common.KeepScreenOnActivity
@@ -123,8 +124,17 @@ class MapActivity : KeepScreenOnActivity() {
         handleArrivalIntent(intent)
         // НОВОЕ: "взятие направления" — долгий тап в любом месте карты,
         // независимо от текущего TrackingMode (см. решение по ТЗ).
+        // ИЗМЕНЕНО: явный запрет без загруженной карты (ни офлайн-тайлов,
+        // ни онлайн — просто серая заглушка) — без визуальной подложки
+        // пользователь не видит ориентиров на местности (троп, рек, дорог)
+        // и физически не может осмысленно выбрать, что отметить или куда
+        // взять направление. mapController.isMapLoaded() — см. MapController.
         mapController.onLongPress = { x, y ->
-            mapController.screenToLatLong(x, y)?.let { (lat, lon) -> showLongPressActionDialog(lat, lon) }
+            if (!mapController.isMapLoaded()) {
+                Toast.makeText(this, R.string.long_press_requires_map, Toast.LENGTH_SHORT).show()
+            } else {
+                mapController.screenToLatLong(x, y)?.let { (lat, lon) -> showLongPressActionDialog(lat, lon) }
+            }
         }
         refreshNavigationTargetUi()
     }

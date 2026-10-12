@@ -3,10 +3,16 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.Paint
 import android.location.Location
 import android.os.Bundle
 import android.os.IBinder
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.AbsoluteSizeSpan
+import android.text.style.ForegroundColorSpan
 import com.trailback.app.ui.common.KeepScreenOnActivity
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.lifecycle.lifecycleScope
 import com.trailback.app.TrailBackApp
 import com.trailback.app.data.db.EntryPoint
@@ -100,6 +106,22 @@ class CompassActivity : KeepScreenOnActivity() {
         app.compassSensorManager.northMode = app.settingsStore.northMode
         infoPanelController.updateRouteCounter()
         setupCalibrationWarningClick()
+        applyHeadingLabelSpacing()
+    }
+    /**
+     * НОВОЕ: отступ от headingLabelText до диска компаса = высота строки
+     * текста курса (COURSE_TEXT_SIZE_PX, см. updateHeadingLabel) — считаем
+     * через реальные font metrics ЭТОГО конкретного размера шрифта, а не
+     * подбираем dp на глаз (тот же принцип, что и у центрирования подписей
+     * внутри CompassView — см. drawCenteredText). Высота курса не меняется
+     * в рантайме, поэтому считаем один раз здесь, а не на каждый тик курса.
+     */
+    private fun applyHeadingLabelSpacing() {
+        val fm = Paint().apply { textSize = COURSE_TEXT_SIZE_PX }.fontMetrics
+        val lineHeightPx = fm.descent - fm.ascent
+        val params = binding.compassView.layoutParams as ConstraintLayout.LayoutParams
+        params.topMargin = lineHeightPx.toInt()
+        binding.compassView.layoutParams = params
     }
     /**
      * Предупреждение о точности компаса кликабельно — по тапу открывает
@@ -170,11 +192,31 @@ class CompassActivity : KeepScreenOnActivity() {
     /** НОВОЕ: текст "буква стороны + курс в градусах" (например "СЗ 311"),
      * вынесенный над диском компаса (см. activity_compass.xml,
      * headingLabelText) — раньше рисовался внутри CompassView по центру
-     * диска. Формат — буква, затем градус, по образцу, который попросили. */
+     * диска. Формат — буква, затем градус, по образцу, который попросили.
+     * ИЗМЕНЕНО (по просьбе): разные размеры для двух частей одной строки —
+     * курс (градус) крупнее (COURSE_TEXT_SIZE_PX, "сырые" пиксели, не sp) и
+     * буква стороны света (базовый android:textSize TextView — 32sp, не
+     * трогаем), плюс буква ослаблена до 80% непрозрачности, чтобы курс
+     * читался как главный акцент строки. SpannableString — единственный
+     * способ задать разный textSize/alpha разным кускам одной строки в
+     * одном TextView. */
     private fun updateHeadingLabel(heading: Float) {
         val roundedHeading = ((heading + 0.5f).toInt()) % 360
         val point = binding.compassView.compassPointLabel(heading)
-        binding.headingLabelText.text = "$point $roundedHeading"
+        val degreeText = roundedHeading.toString()
+        val fullText = "$point $degreeText"
+        val degreeStart = fullText.length - degreeText.length
+        val spannable = SpannableString(fullText).apply {
+            setSpan(
+                AbsoluteSizeSpan(COURSE_TEXT_SIZE_PX.toInt(), false), // false = сырые px, не dp
+                degreeStart, fullText.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            setSpan(
+                ForegroundColorSpan(POINT_LABEL_COLOR), // белый, альфа 80% (0xCC)
+                0, point.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+        binding.headingLabelText.text = spannable
     }
     override fun onPause() {
         val app = application as TrailBackApp
@@ -291,5 +333,13 @@ class CompassActivity : KeepScreenOnActivity() {
         // НОВОЕ: цвет стрелки "взятия направления" — фиолетовый, отличается
         // от оранжевого "Домой", чтобы пользователь не перепутал цели.
         private const val DIRECTION_ARROW_COLOR = 0xFF9C27B0.toInt()
+        // НОВОЕ: размер текста курса в вынесенной над диском строке (см.
+        // updateHeadingLabel) — "сырые" пиксели (как в CompassView), не sp.
+        private const val COURSE_TEXT_SIZE_PX = 40f
+        // НОВОЕ: цвет буквы стороны света в той же строке — белый с альфой
+        // 80% (0.8 * 255 = 204 = 0xCC), ослаблен по просьбе относительно
+        // курса, который остаётся полностью непрозрачным (идёт из базового
+        // android:textColor TextView, этот спан его не трогает).
+        private const val POINT_LABEL_COLOR = 0xCCFFFFFF.toInt()
     }
 }
