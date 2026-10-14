@@ -110,19 +110,23 @@ class CompassActivity : KeepScreenOnActivity() {
     }
     /**
      * НОВОЕ: отступ от headingLabelText до диска компаса = высота строки
-     * текста курса (COURSE_TEXT_SIZE_PX, см. updateHeadingLabel) — считаем
-     * через реальные font metrics ЭТОГО конкретного размера шрифта, а не
-     * подбираем dp на глаз (тот же принцип, что и у центрирования подписей
-     * внутри CompassView — см. drawCenteredText). Высота курса не меняется
-     * в рантайме, поэтому считаем один раз здесь, а не на каждый тик курса.
+     * курса (ближайшей к диску — см. updateHeadingLabel, буква сверху,
+     * курс снизу) — считаем через реальные font metrics этого конкретного
+     * размера шрифта, а не подбираем dp на глаз (тот же принцип, что и у
+     * центрирования подписей внутри CompassView — см. drawCenteredText).
+     * Размер в sp переводится в px через scaledDensity (а не просто
+     * density) — именно так Android сам трактует "sp", с учётом системной
+     * настройки масштаба шрифта, а не только плотности экрана.
      */
     private fun applyHeadingLabelSpacing() {
-        val fm = Paint().apply { textSize = COURSE_TEXT_SIZE_PX }.fontMetrics
+        val coursePx = spToPx(COURSE_TEXT_SIZE_SP)
+        val fm = Paint().apply { textSize = coursePx }.fontMetrics
         val lineHeightPx = fm.descent - fm.ascent
         val params = binding.compassView.layoutParams as ConstraintLayout.LayoutParams
         params.topMargin = lineHeightPx.toInt()
         binding.compassView.layoutParams = params
     }
+    private fun spToPx(sp: Float): Float = sp * resources.displayMetrics.scaledDensity
     /**
      * Предупреждение о точности компаса кликабельно — по тапу открывает
      * пункт меню "Калибровка" (SECTION_CALIBRATION: инструкция + анимированная
@@ -189,26 +193,28 @@ class CompassActivity : KeepScreenOnActivity() {
             }
         }
     }
-    /** НОВОЕ: текст "буква стороны + курс в градусах" (например "СЗ 311"),
-     * вынесенный над диском компаса (см. activity_compass.xml,
-     * headingLabelText) — раньше рисовался внутри CompassView по центру
-     * диска. Формат — буква, затем градус, по образцу, который попросили.
-     * ИЗМЕНЕНО (по просьбе): разные размеры для двух частей одной строки —
-     * курс (градус) крупнее (COURSE_TEXT_SIZE_PX, "сырые" пиксели, не sp) и
-     * буква стороны света (базовый android:textSize TextView — 32sp, не
-     * трогаем), плюс буква ослаблена до 80% непрозрачности, чтобы курс
-     * читался как главный акцент строки. SpannableString — единственный
-     * способ задать разный textSize/alpha разным кускам одной строки в
-     * одном TextView. */
+    /** НОВОЕ: текст "буква стороны + курс в градусах", вынесенный над диском
+     * компаса (см. activity_compass.xml, headingLabelText) — раньше
+     * рисовался внутри CompassView по центру диска.
+     * ИЗМЕНЕНО (по просьбе): буква сверху, курс снизу (две строки, не одна
+     * через пробел), у курса добавлен значок градуса. Разные размеры —
+     * курс 40sp (COURSE_TEXT_SIZE_SP), буква 32sp (базовый android:textSize
+     * TextView, см. activity_compass.xml, явно не трогаем здесь) — оба
+     * значения именно в sp (переводятся в px через scaledDensity, см.
+     * spToPx/applyHeadingLabelSpacing, а не "сырые" пиксели, как было по
+     * ошибке в прошлый раз). Буква дополнительно ослаблена до 80%
+     * непрозрачности. SpannableString — единственный способ задать разный
+     * textSize/alpha разным кускам текста в одном TextView. */
     private fun updateHeadingLabel(heading: Float) {
         val roundedHeading = ((heading + 0.5f).toInt()) % 360
         val point = binding.compassView.compassPointLabel(heading)
-        val degreeText = roundedHeading.toString()
-        val fullText = "$point $degreeText"
+        val degreeText = "$roundedHeading°"
+        val fullText = "$point\n$degreeText"
         val degreeStart = fullText.length - degreeText.length
+        val coursePx = spToPx(COURSE_TEXT_SIZE_SP).toInt()
         val spannable = SpannableString(fullText).apply {
             setSpan(
-                AbsoluteSizeSpan(COURSE_TEXT_SIZE_PX.toInt(), false), // false = сырые px, не dp
+                AbsoluteSizeSpan(coursePx, false), // false = значение уже в px (посчитан вручную из sp)
                 degreeStart, fullText.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             setSpan(
@@ -334,8 +340,9 @@ class CompassActivity : KeepScreenOnActivity() {
         // от оранжевого "Домой", чтобы пользователь не перепутал цели.
         private const val DIRECTION_ARROW_COLOR = 0xFF9C27B0.toInt()
         // НОВОЕ: размер текста курса в вынесенной над диском строке (см.
-        // updateHeadingLabel) — "сырые" пиксели (как в CompassView), не sp.
-        private const val COURSE_TEXT_SIZE_PX = 40f
+        // updateHeadingLabel) — в sp, переводится в px через spToPx()
+        // (scaledDensity), чтобы учитывать системный масштаб шрифта.
+        private const val COURSE_TEXT_SIZE_SP = 40f
         // НОВОЕ: цвет буквы стороны света в той же строке — белый с альфой
         // 80% (0.8 * 255 = 204 = 0xCC), ослаблен по просьбе относительно
         // курса, который остаётся полностью непрозрачным (идёт из базового
