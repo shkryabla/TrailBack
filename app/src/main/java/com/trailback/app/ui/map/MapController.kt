@@ -29,8 +29,6 @@ import org.mapsforge.map.android.view.MapView
 import org.mapsforge.map.layer.overlay.Circle
 import org.mapsforge.map.datastore.MapDataStore
 import org.mapsforge.map.layer.cache.TileCache
-import org.mapsforge.map.layer.download.TileDownloadLayer
-import org.mapsforge.map.layer.download.tilesource.OpenStreetMapMapnik
 import org.mapsforge.map.layer.overlay.Marker
 import org.mapsforge.map.layer.overlay.Polyline
 import org.mapsforge.map.layer.renderer.TileRendererLayer
@@ -39,8 +37,11 @@ import org.mapsforge.map.rendertheme.InternalRenderTheme
 import java.io.File
 /**
  * Инкапсулирует работу с Mapsforge: если офлайн-карта выбрана — рендерит её
- * тайлы; если нет ни офлайн-карты, ни интернета — показывает серую заглушку,
- * поверх которой всё равно рисуются маршрут и элементы управления.
+ * тайлы; если нет — показывает серую заглушку, поверх которой всё равно
+ * рисуются маршрут и элементы управления.
+ * ИЗМЕНЕНО: онлайн-провайдер (OSM Mapnik через TileDownloadLayer) вырезан
+ * полностью — приложение принципиально офлайн, никакого сетевого фолбэка
+ * на карты больше нет. Только офлайн-Mapsforge или заглушка.
  */
 class MapController(
     private val context: Context,
@@ -48,7 +49,6 @@ class MapController(
 ) {
     private var mapView: MapView? = null
     private var tileRendererLayer: TileRendererLayer? = null
-    private var tileDownloadLayer: TileDownloadLayer? = null
     // НОВОЕ: прогресс копирования файла офлайн-карты из SAF-Uri в cacheDir
     // (см. resolveFirstMapFile) — единственная реально долгая операция при
     // открытии офлайн-карты (сам рендеринг тайлов Mapsforge — не in-memory,
@@ -103,7 +103,7 @@ class MapController(
      * в лимит ANR. Теперь копирование выполняется на Dispatchers.IO, а
      * заглушка показывается сразу — пользователь не видит зависания.
      */
-    suspend fun setupMap(offlineMapsUri: String?, hasInternet: Boolean) {
+    suspend fun setupMap(offlineMapsUri: String?) {
         // Уничтожаем предыдущий MapView (если это переинициализация после смены
         // офлайн-карты в настройках, см. решение по ТЗ — раньше карта менялась
         // только после полного перезапуска приложения) и сбрасываем ссылки на
@@ -111,11 +111,9 @@ class MapController(
         // иначе updateTrackLine/updateHomeLine/updateUserPosition будут
         // молча падать на несуществующие layers старой карты.
         tileRendererLayer?.let { it.mapDataStore.close() }
-        tileDownloadLayer?.onDestroy()
         mapView?.destroyAll()
         mapView = null
         tileRendererLayer = null
-        tileDownloadLayer = null
         trackPolyline = null
         homeLinePolyline = null
         userMarkerLayer?.destroy()
@@ -147,14 +145,11 @@ class MapController(
                 showOfflineMap(mapFile)
                 return
             }
-            // Офлайн-карта не найдена/не читается — пробуем онлайн или заглушку.
+            // Офлайн-карта не найдена/не читается — только заглушка (онлайн-
+            // фолбэка больше нет, см. решение по ТЗ — приложение строго офлайн).
             container.removeAllViews()
         }
-        if (hasInternet) {
-            showOnlineMap()
-        } else {
-            showPlaceholder()
-        }
+        showPlaceholder()
     }
     /**
      * Выполняется на Dispatchers.IO (см. вызывающий код). Пропускает
@@ -239,46 +234,10 @@ class MapController(
         ))
     }
     /**
-     * Онлайн-тайлы через OpenStreetMap Mapnik — простая, бесплатная,
-     * некоммерческая карта без спутниковых снимков (см. решение по ТЗ:
-     * "простые карты, без сильной детализации, без спутника"). Используется,
-     * только если офлайн-карта не выбрана, но есть интернет.
-     */
-    private fun showOnlineMap() {
-        val newMapView = MapView(context)
-        newMapView.setBuiltInZoomControls(false)
-        newMapView.mapScaleBar.isVisible = true
-        val tileSource = OpenStreetMapMapnik.INSTANCE
-        tileSource.userAgent = context.packageName
-        val tileCache: TileCache = AndroidUtil.createTileCache(
-            context,
-            "online_tiles",
-            newMapView.model.displayModel.tileSize,
-            1f,
-            newMapView.model.frameBufferModel.overdrawFactor
-        )
-        val downloadLayer = TileDownloadLayer(
-            tileCache,
-            newMapView.model.mapViewPosition,
-            tileSource,
-            AndroidGraphicFactory.INSTANCE
-        )
-        newMapView.layerManager.layers.add(downloadLayer)
-        newMapView.model.mapViewPosition.zoomLevelMin = ZOOM_LEVEL_MIN
-        newMapView.model.mapViewPosition.zoomLevelMax = ZOOM_LEVEL_MAX_ONLINE
-        newMapView.model.mapViewPosition.zoomLevel = DEFAULT_ZOOM_LEVEL
-        tileDownloadLayer = downloadLayer
-        mapView = newMapView
-        attachUserMarkerLayer(newMapView)
-        attachManualPanDetector(newMapView)
-        container.addView(newMapView, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-    }
-    /**
-     * Создаёт и добавляет RotatingUserMarkerLayer в новый MapView — общий
-     * код для offline- и online-веток (showOfflineMap/showOnlineMap), чтобы
-     * не дублировать создание слоя. ВАЖНО: добавляется сразу после
+     * Создаёт и добавляет RotatingUserMarkerLayer в новый MapView — вынесено
+     * отдельно (а не инлайн в showOfflineMap), чтобы не дублировать код,
+     * если в будущем появится ещё один способ показа офлайн-карты.
+     * ВАЖНО: добавляется сразу после
      * тайлового слоя (до линий трека/дома/направления, которые добавляются
      * позже через updateTrackLine/updateHomeLine/updateNavigationTargetLine) —
      * порядок добавления в layerManager.layers определяет порядок отрисовки,
@@ -681,14 +640,14 @@ class MapController(
         navigationTargetMarker = marker
     }
     /**
-     * НОВОЕ: true, только если на экране сейчас реально отображается карта
-     * (офлайн-тайлы Mapsforge или онлайн-тайлы OSM) — false на заглушке
-     * (нет ни офлайн-карты, ни интернета, либо идёт копирование большого
-     * .map файла и тайлы ещё не готовы, см. setupMap). mapView == null
-     * ровно в этих случаях: setupMap() сбрасывает его в null перед
-     * показом заглушки и выставляет заново только в showOfflineMap()/
-     * showOnlineMap() — тот же сигнал, которым уже пользуются canZoomIn()/
-     * canZoomOut() ниже (те тоже просто return false, если mapView==null).
+     * НОВОЕ: true, только если на экране сейчас реально отображается
+     * офлайн-карта Mapsforge — false на заглушке (офлайн-карта не выбрана/
+     * не читается, либо идёт копирование большого .map файла и тайлы ещё
+     * не готовы, см. setupMap). mapView == null ровно в этих случаях:
+     * setupMap() сбрасывает его в null перед показом заглушки и выставляет
+     * заново только в showOfflineMap() — тот же сигнал, которым уже
+     * пользуются canZoomIn()/canZoomOut() ниже (те тоже просто return
+     * false, если mapView==null).
      *
      * Используется в MapActivity, чтобы запретить долгий тап (сохранение
      * места / взятие направления) без визуальной подложки — без карты
@@ -719,7 +678,6 @@ class MapController(
     }
     fun onDestroy() {
         tileRendererLayer?.let { it.mapDataStore.close() }
-        tileDownloadLayer?.onDestroy()
         userMarkerLayer?.destroy()
         mapView?.destroyAll()
         AndroidGraphicFactory.clearResourceMemoryCache()
@@ -736,7 +694,6 @@ class MapController(
         // обновлениях во время активной записи).
         private const val SMOOTHING_SEGMENTS = 6
         private const val ZOOM_LEVEL_MAX: Byte = 20
-        private const val ZOOM_LEVEL_MAX_ONLINE: Byte = 18
         private const val DEFAULT_ZOOM_LEVEL: Byte = 15
         // 1.5x от исходных 32dp (см. решение по ТЗ)
         private const val MARKER_SIZE_DP = 48

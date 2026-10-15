@@ -6,8 +6,6 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.location.Location
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -103,7 +101,7 @@ class MapActivity : KeepScreenOnActivity() {
         mapController = MapController(this, binding.mapContainer)
         lastAppliedOfflineMapsUri = app.settingsStore.offlineMapsUri
         lifecycleScope.launch {
-            mapController.setupMap(lastAppliedOfflineMapsUri, hasInternetConnection())
+            mapController.setupMap(lastAppliedOfflineMapsUri)
             // Пересчёт состояния зум-кнопок ПОСЛЕ готовности mapView — иначе
             // при офлайн-карте (реальная suspend-точка на Dispatchers.IO)
             // canZoomIn()/canZoomOut() читают ещё null mapView и кнопки
@@ -222,7 +220,7 @@ class MapActivity : KeepScreenOnActivity() {
         if (currentUri != lastAppliedOfflineMapsUri) {
             lastAppliedOfflineMapsUri = currentUri
             lifecycleScope.launch {
-                mapController.setupMap(currentUri, hasInternetConnection())
+                mapController.setupMap(currentUri)
                 updateZoomButtonsState() // та же гонка, что и в onCreate()
                 refreshNavigationTargetUi() // НОВОЕ
             }
@@ -240,12 +238,6 @@ class MapActivity : KeepScreenOnActivity() {
     override fun onDestroy() {
         mapController.onDestroy()
         super.onDestroy()
-    }
-    private fun hasInternetConnection(): Boolean {
-        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
     /**
      * КРИТИЧНО: отменяем предыдущую подписку перед созданием новой.
