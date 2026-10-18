@@ -39,6 +39,11 @@ class MapActivity : KeepScreenOnActivity() {
         const val ACTION_SHOW_ARRIVED_DIALOG = "com.trailback.app.SHOW_ARRIVED_DIALOG"
         // НОВОЕ: симметрично ACTION_SHOW_ARRIVED_DIALOG, для "взятия направления".
         const val ACTION_SHOW_DIRECTION_ARRIVED_DIALOG = "com.trailback.app.SHOW_DIRECTION_ARRIVED_DIALOG"
+        // НОВОЕ: "Показать на карте" из MarkedPlacesActivity — центрирует
+        // карту на координатах отмеченного места (см. MapController.centerOn).
+        const val ACTION_CENTER_ON_PLACE = "com.trailback.app.CENTER_ON_PLACE"
+        const val EXTRA_LATITUDE = "extra_latitude"
+        const val EXTRA_LONGITUDE = "extra_longitude"
         const val LOW_ACCURACY_THRESHOLD_METERS = 50f
     }
     private lateinit var binding: ActivityMapBinding
@@ -119,7 +124,7 @@ class MapActivity : KeepScreenOnActivity() {
         setupButtons()
         setupMapControlButtons()
         observeViewModel()
-        handleArrivalIntent(intent)
+        handleIncomingIntent(intent)
         // НОВОЕ: "взятие направления" — долгий тап в любом месте карты,
         // независимо от текущего TrackingMode (см. решение по ТЗ).
         // ИЗМЕНЕНО: явный запрет без загруженной карты (ни офлайн-тайлов,
@@ -138,12 +143,24 @@ class MapActivity : KeepScreenOnActivity() {
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleArrivalIntent(intent)
+        handleIncomingIntent(intent)
     }
-    private fun handleArrivalIntent(intent: Intent?) {
+    private fun handleIncomingIntent(intent: Intent?) {
         when (intent?.action) {
             ACTION_SHOW_ARRIVED_DIALOG -> showArrivedDialog()
             ACTION_SHOW_DIRECTION_ARRIVED_DIALOG -> showDirectionArrivedDialog() // НОВОЕ
+            // НОВОЕ: "Показать на карте" — MapActivity обычно уже жива в
+            // стеке (singleTop + launcher-активность), поэтому сюда почти
+            // всегда попадаем через onNewIntent(), когда mapController уже
+            // полностью настроен — centerOn() просто no-op, если mapView
+            // почему-то ещё не готов (холодный старт, см. MapController).
+            ACTION_CENTER_ON_PLACE -> {
+                val lat = intent.getDoubleExtra(EXTRA_LATITUDE, Double.NaN)
+                val lon = intent.getDoubleExtra(EXTRA_LONGITUDE, Double.NaN)
+                if (!lat.isNaN() && !lon.isNaN()) {
+                    mapController.centerOn(lat, lon)
+                }
+            }
         }
     }
     override fun onStart() {

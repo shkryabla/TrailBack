@@ -14,6 +14,9 @@
     <!-- Верхняя информационная панель (единая светлая тема на всю ширину).
          ИЗМЕНЕНО: #D5D5D5 — точная инверсия panel_dark (#2A2A2A), по решению. -->
     <color name="info_panel_bg">#D5D5D5</color>
+    <!-- НОВОЕ: сетка привязки к масштабу на заглушке (см. ScaleGridLayer) —
+         на тон темнее info_panel_bg, по согласованию. -->
+    <color name="scale_grid_line">#B8B8B8</color>
     <color name="info_panel_border">#2A2A2A</color>
     <color name="info_panel_label">#2A2A2A</color>
     <color name="counter_black">#000000</color>

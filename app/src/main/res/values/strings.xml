@@ -54,8 +54,16 @@
     <string name="mark_place_hint">Enter a name</string>
     <string name="calibration_instructions_title">Compass calibration</string>
     <string name="calibration_instructions_text">Rotate your phone in a figure-eight motion several times to improve compass accuracy.</string>
-    <string name="open_in_navigation_app">Open in navigation app</string>
+    <string name="open_in_navigation_app">Open in navigator</string>
     <string name="copy_coordinates">Copy coordinates</string>
+    <string name="show_on_map">Show on map</string>
+    <string name="action_delete">Delete</string>
+    <string name="add_place_button_description">Add a marked place</string>
+    <string name="add_place_dialog_title">New place</string>
+    <string name="add_place_coordinates_hint">55.75124, 37.61842</string>
+    <string name="add_place_save">Save</string>
+    <string name="add_place_cancel">Cancel</string>
+    <string name="add_place_invalid_input">Enter a name and coordinates in "latitude, longitude" format</string>
     <string name="coordinates_copied">Coordinates copied</string>
     <string name="recovery_dialog_title">Unfinished route found</string>
     <string name="recovery_dialog_message">The app was closed while recording a route. Continue recording from where it stopped?</string>
@@ -65,6 +73,7 @@
     <string name="select_entry_point_locked_active_mode">Cannot change point while recording a route or "Home" mode is active</string>
     <string name="entry_point_set_active">Point set as active</string>
     <string name="menu_exit">Exit</string>
+    <string name="developer_credit">Developer: shkryabla@gmail.com</string>
     <string name="exit_confirm_message">Are you sure you want to exit the app?</string>
     <string name="exit_locked_active_mode">Cannot exit the app while a route is being recorded or "Home" mode is active</string>
     <string name="manual_arrival_reset_confirm_message">Are you sure? Return mode to the starting point will be reset!</string>

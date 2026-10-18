@@ -2,12 +2,10 @@ package com.trailback.app.ui.map
 import android.content.Context
 import android.graphics.Bitmap as AndroidBitmapType
 import android.graphics.Canvas as AndroidCanvasType
-import android.graphics.Color
 import android.location.Location
 import android.net.Uri
 import android.view.GestureDetector
 import android.view.MotionEvent
-import android.view.View
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
@@ -65,6 +63,9 @@ class MapController(
     // кастомный Layer, вращающий Canvas на этапе отрисовки, без аллокаций
     // Bitmap на каждый тик датчика (см. RotatingUserMarkerLayer).
     private var userMarkerLayer: RotatingUserMarkerLayer? = null
+    // НОВОЕ: сетка привязки к масштабу — см. ScaleGridLayer, только на
+    // заглушке (showEmptyMap), на реальных офлайн-тайлах не добавляется.
+    private var scaleGridLayer: ScaleGridLayer? = null
     private var accuracyCircle: Circle? = null
     private var entryPointMarker: Marker? = null
     // НОВОЕ: "взятие направления" — независимые от точки входа маркер и
@@ -118,6 +119,7 @@ class MapController(
         homeLinePolyline = null
         userMarkerLayer?.destroy()
         userMarkerLayer = null
+        scaleGridLayer = null
         accuracyCircle = null
         entryPointMarker = null
         navigationTargetMarker = null // НОВОЕ
@@ -126,12 +128,13 @@ class MapController(
         followModeEnabled = true
         container.removeAllViews()
         if (offlineMapsUri != null) {
-            // Показываем заглушку сразу — пока в фоне может идти копирование
-            // большого файла карты, пользователь не видит зависший экран.
+            // Показываем рабочий MapView без тайлов сразу — пока в фоне
+            // может идти копирование большого файла карты, пользователь не
+            // видит зависший экран, и курсор/зум уже доступны.
             // НОВОЕ: заглушка теперь дополняется текстом прогресса
             // (см. mapLoadProgress) — раньше был голый серый прямоугольник
             // без обратной связи, при 600+ МБ файле выглядело как зависание.
-            showPlaceholder()
+            showEmptyMap()
             _mapLoadProgress.value = 0
             val mapFile = try {
                 withContext(Dispatchers.IO) {
@@ -145,11 +148,12 @@ class MapController(
                 showOfflineMap(mapFile)
                 return
             }
-            // Офлайн-карта не найдена/не читается — только заглушка (онлайн-
-            // фолбэка больше нет, см. решение по ТЗ — приложение строго офлайн).
+            // Офлайн-карта не найдена/не читается — только карта без тайлов
+            // (онлайн-фолбэка больше нет, см. решение по ТЗ — приложение
+            // строго офлайн).
             container.removeAllViews()
         }
-        showPlaceholder()
+        showEmptyMap()
     }
     /**
      * Выполняется на Dispatchers.IO (см. вызывающий код). Пропускает
@@ -283,11 +287,44 @@ class MapController(
             false
         }
     }
-    private fun showPlaceholder() {
-        val placeholder = View(context).apply {
-            setBackgroundColor(Color.parseColor("#3A3A3A"))
-        }
-        container.addView(placeholder, FrameLayout.LayoutParams(
+    /**
+     * ИЗМЕНЕНО (отмена части правки про вырезание онлайн-карты): без
+     * офлайн-карты теперь показывается не статичная View-заглушка, а
+     * ПОЛНОЦЕННЫЙ MapView без тайлового слоя — зум, значок текущего
+     * положения (RotatingUserMarkerLayer), счётчик пути, маркер точки
+     * входа, линии "Домой"/"взятия направления" продолжают работать и без
+     * загруженной карты (именно это было потеряно при вырезании онлайн-
+     * фолбэка — тот давал mapView не ради тайлов, а чтобы эти слои вообще
+     * было куда добавить). Фон — цвет инфопанели (info_panel_bg), а не
+     * прежний случайный #3A3A3A.
+     *
+     * tileRendererLayer НЕ выставляется (остаётся null) — именно по этому
+     * полю isMapLoaded() отличает "показаны офлайн-тайлы" (можно долгий
+     * тап) от "просто серый MapView без карты" (долгий тап заблокирован,
+     * см. решение по ТЗ — без тайлов пользователь не видит ориентиров).
+     *
+     * mapScaleBar отключена — показывать масштабную линейку, когда под ней
+     * нет самой карты, с которой её сверять, бессмысленно и вводит в
+     * заблуждение. Вместо неё — ScaleGridLayer (см. класс), даёт то же
+     * ощущение расстояния, но без самой карты под ним.
+     */
+    private fun showEmptyMap() {
+        val newMapView = MapView(context)
+        newMapView.setBuiltInZoomControls(false)
+        newMapView.mapScaleBar.isVisible = false
+        newMapView.setBackgroundColor(ContextCompat.getColor(context, R.color.info_panel_bg))
+        newMapView.model.mapViewPosition.zoomLevelMin = ZOOM_LEVEL_MIN
+        newMapView.model.mapViewPosition.zoomLevelMax = ZOOM_LEVEL_MAX
+        newMapView.model.mapViewPosition.zoomLevel = DEFAULT_ZOOM_LEVEL
+        mapView = newMapView
+        // Сетка — ПЕРЕД маркером положения/треком, чтобы быть визуально
+        // "под" ними (фоновый ориентир, не перекрывает активные элементы).
+        val gridLayer = ScaleGridLayer(newMapView.model.displayModel, context)
+        newMapView.layerManager.layers.add(gridLayer)
+        scaleGridLayer = gridLayer
+        attachUserMarkerLayer(newMapView)
+        attachManualPanDetector(newMapView)
+        container.addView(newMapView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
         ))
     }
@@ -640,21 +677,21 @@ class MapController(
         navigationTargetMarker = marker
     }
     /**
-     * НОВОЕ: true, только если на экране сейчас реально отображается
-     * офлайн-карта Mapsforge — false на заглушке (офлайн-карта не выбрана/
-     * не читается, либо идёт копирование большого .map файла и тайлы ещё
-     * не готовы, см. setupMap). mapView == null ровно в этих случаях:
-     * setupMap() сбрасывает его в null перед показом заглушки и выставляет
-     * заново только в showOfflineMap() — тот же сигнал, которым уже
-     * пользуются canZoomIn()/canZoomOut() ниже (те тоже просто return
-     * false, если mapView==null).
+     * ИЗМЕНЕНО: раньше проверяло mapView != null — но после возврата
+     * рабочего MapView для состояния "без офлайн-карты" (см. showEmptyMap,
+     * нужен ради значка положения/зума без тайлов) mapView существует
+     * ВСЕГДА, и этот сигнал перестал различать "есть офлайн-тайлы" и
+     * "просто серый MapView без карты". Теперь проверяется конкретно
+     * tileRendererLayer — он выставляется только в showOfflineMap(),
+     * остаётся null в showEmptyMap(). canZoomIn()/canZoomOut() ниже
+     * продолжают проверять mapView (зум должен работать и без тайлов).
      *
      * Используется в MapActivity, чтобы запретить долгий тап (сохранение
-     * места / взятие направления) без визуальной подложки — без карты
-     * пользователь не видит ориентиров на местности и не может осмысленно
-     * выбрать точку.
+     * места / взятие направления) без офлайн-тайлов — без них пользователь
+     * не видит ориентиров на местности и не может осмысленно выбрать точку
+     * (серый фон с одним курсором для этого недостаточен).
      */
-    fun isMapLoaded(): Boolean = mapView != null
+    fun isMapLoaded(): Boolean = tileRendererLayer != null
     fun canZoomIn(): Boolean {
         val position = mapView?.model?.mapViewPosition ?: return false
         return position.zoomLevel < position.zoomLevelMax
@@ -675,6 +712,16 @@ class MapController(
         location ?: return
         followModeEnabled = true
         mapView?.model?.mapViewPosition?.center = LatLong(location.latitude, location.longitude)
+    }
+    /** НОВОЕ: "Показать на карте" для отмеченного места (см.
+     * MarkedPlacesActivity) — центрирует на ПРОИЗВОЛЬНЫХ координатах, а не
+     * на текущей геопозиции (в отличие от recenterOn выше). followMode
+     * выключается (а не включается, как в recenterOn) — иначе карта тут же
+     * "убежала" бы обратно к пользователю на следующем GPS-фиксе, вместо
+     * того чтобы остаться на выбранном месте, пока его рассматривают. */
+    fun centerOn(latitude: Double, longitude: Double) {
+        followModeEnabled = false
+        mapView?.model?.mapViewPosition?.center = LatLong(latitude, longitude)
     }
     fun onDestroy() {
         tileRendererLayer?.let { it.mapDataStore.close() }

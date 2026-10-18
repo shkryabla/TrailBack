@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_open_navigation"
+        android:title="@string/open_in_navigation_app" />
+    <item
+        android:id="@+id/action_copy_coordinates"
+        android:title="@string/copy_coordinates" />
+    <item
+        android:id="@+id/action_show_on_map"
+        android:title="@string/show_on_map" />
+    <item
+        android:id="@+id/action_delete"
+        android:title="@string/action_delete" />
+</menu>

@@ -1,6 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.recyclerview.widget.RecyclerView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/menuList"
+<!-- НОВОЕ: подпись разработчика внизу экрана меню — тот же "тихий" стиль
+     мелкого серого текста, что уже используется для версии приложения на
+     экране "О приложении" (см. SettingsActivity.versionText, 12sp
+     text_gray) — чтобы не спорить по весу с самими пунктами меню. -->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark" />
+    android:background="@color/background_dark">
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/menuList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/developerCreditText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+    <!-- android:autoLink="email" — штатная функция Android: сама находит
+         email в тексте и делает кликабельным (открывает почтовый клиент
+         через mailto:), без ручного ClickableSpan/Intent в коде. -->
+    <TextView
+        android:id="@+id/developerCreditText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:gravity="center"
+        android:text="@string/developer_credit"
+        android:textColor="@color/text_gray"
+        android:textSize="12sp"
+        android:autoLink="email"
+        android:textColorLink="@color/accent_orange"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+</androidx.constraintlayout.widget.ConstraintLayout>

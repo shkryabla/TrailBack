@@ -50,8 +50,16 @@
     <string name="mark_place_hint">Введите название</string>
     <string name="calibration_instructions_title">Калибровка компаса</string>
     <string name="calibration_instructions_text">Несколько раз повращайте телефон восьмёркой, чтобы улучшить точность компаса.</string>
-    <string name="open_in_navigation_app">Открыть в навигационном приложении</string>
-    <string name="copy_coordinates">Скопировать координаты</string>
+    <string name="open_in_navigation_app">Открыть в навигаторе</string>
+    <string name="copy_coordinates">Копировать координаты</string>
+    <string name="show_on_map">Показать на карте</string>
+    <string name="action_delete">Удалить</string>
+    <string name="add_place_button_description">Добавить отмеченное место</string>
+    <string name="add_place_dialog_title">Новое место</string>
+    <string name="add_place_coordinates_hint">55.75124, 37.61842</string>
+    <string name="add_place_save">Сохранить</string>
+    <string name="add_place_cancel">Отмена</string>
+    <string name="add_place_invalid_input">Введите название и координаты в формате "широта, долгота"</string>
     <string name="coordinates_copied">Координаты скопированы</string>
     <string name="recovery_dialog_title">Обнаружен незавершённый маршрут</string>
     <string name="recovery_dialog_message">Приложение было закрыто во время записи маршрута. Продолжить запись с того места, где она прервалась?</string>
@@ -61,6 +69,7 @@
     <string name="select_entry_point_locked_active_mode">Нельзя сменить точку во время записи маршрута или в активном режиме "Домой"</string>
     <string name="entry_point_set_active">Точка установлена как активная</string>
     <string name="menu_exit">Выход</string>
+    <string name="developer_credit">Разработчик: shkryabla@gmail.com</string>
     <string name="exit_confirm_message">Вы уверены, что хотите выйти из приложения?</string>
     <string name="exit_locked_active_mode">Нельзя выйти из приложения во время записи маршрута или в активном режиме "Домой"</string>
     <string name="manual_arrival_reset_confirm_message">Вы уверены? Режим возврата на начальную точку будет сброшен!</string>
