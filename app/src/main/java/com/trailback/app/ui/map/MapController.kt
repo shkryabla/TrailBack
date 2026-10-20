@@ -295,8 +295,12 @@ class MapController(
      * входа, линии "Домой"/"взятия направления" продолжают работать и без
      * загруженной карты (именно это было потеряно при вырезании онлайн-
      * фолбэка — тот давал mapView не ради тайлов, а чтобы эти слои вообще
-     * было куда добавить). Фон — цвет инфопанели (info_panel_bg), а не
-     * прежний случайный #3A3A3A.
+     * было куда добавить). Фон (цвет инфопанели, info_panel_bg) заливает
+     * ScaleGridLayer первым действием в своём draw() — см. этот класс;
+     * newMapView.setBackgroundColor() здесь НЕ используется сознательно:
+     * MapView рендерит слои в свой внутренний буфер и сам закрашивает
+     * канвас перед этим, не считаясь с обычным Android View-фоном — тот
+     * был просто не виден (мёртвый код), поэтому фон перенесён в слой.
      *
      * tileRendererLayer НЕ выставляется (остаётся null) — именно по этому
      * полю isMapLoaded() отличает "показаны офлайн-тайлы" (можно долгий
@@ -312,7 +316,6 @@ class MapController(
         val newMapView = MapView(context)
         newMapView.setBuiltInZoomControls(false)
         newMapView.mapScaleBar.isVisible = false
-        newMapView.setBackgroundColor(ContextCompat.getColor(context, R.color.info_panel_bg))
         newMapView.model.mapViewPosition.zoomLevelMin = ZOOM_LEVEL_MIN
         newMapView.model.mapViewPosition.zoomLevelMax = ZOOM_LEVEL_MAX
         newMapView.model.mapViewPosition.zoomLevel = DEFAULT_ZOOM_LEVEL

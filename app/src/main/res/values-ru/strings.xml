@@ -70,6 +70,7 @@
     <string name="entry_point_set_active">Точка установлена как активная</string>
     <string name="menu_exit">Выход</string>
     <string name="developer_credit">Разработчик: shkryabla@gmail.com</string>
+    <string name="developer_email_subject">Приложение ТропаДомой (TrailBack)</string>
     <string name="exit_confirm_message">Вы уверены, что хотите выйти из приложения?</string>
     <string name="exit_locked_active_mode">Нельзя выйти из приложения во время записи маршрута или в активном режиме "Домой"</string>
     <string name="manual_arrival_reset_confirm_message">Вы уверены? Режим возврата на начальную точку будет сброшен!</string>

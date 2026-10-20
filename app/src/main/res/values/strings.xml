@@ -74,6 +74,7 @@
     <string name="entry_point_set_active">Point set as active</string>
     <string name="menu_exit">Exit</string>
     <string name="developer_credit">Developer: shkryabla@gmail.com</string>
+    <string name="developer_email_subject">TrailBack app (ТропаДомой)</string>
     <string name="exit_confirm_message">Are you sure you want to exit the app?</string>
     <string name="exit_locked_active_mode">Cannot exit the app while a route is being recorded or "Home" mode is active</string>
     <string name="manual_arrival_reset_confirm_message">Are you sure? Return mode to the starting point will be reset!</string>

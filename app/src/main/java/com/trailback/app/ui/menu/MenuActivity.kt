@@ -1,5 +1,6 @@
 package com.trailback.app.ui.menu
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -52,6 +53,30 @@ class MenuActivity : KeepScreenOnActivity() {
         // диалог подтверждения) было идентичным (см. решение по ТЗ).
         if (intent.getBooleanExtra(EXTRA_AUTO_EXIT, false)) {
             onExitTapped()
+        }
+        setupDeveloperCreditClick()
+    }
+    /**
+     * НОВОЕ: подпись разработчика внизу экрана — по тапу открывает
+     * почтовый клиент с уже заполненной темой письма (по просьбе —
+     * "Приложение, ТропаДомой, TrailBack"), чтобы разработчику сразу было
+     * понятно, по какому поводу письмо, без лишней переписки.
+     *
+     * android:autoLink здесь не подходит — он открывает голый mailto: без
+     * query-параметров (тема письма не впишется). Intent.ACTION_SENDTO с
+     * mailto:-Uri, куда тема добавлена вручную через Uri.encode() —
+     * стандартный способ предзаполнить тему письма на Android.
+     * Подчёркивание программно — тот же приём, что и у compassWarningText
+     * в CompassActivity (подпись не про одно конкретное действие в тексте,
+     * подчёркиваем всю строку целиком как визуальный сигнал "это ссылка").
+     */
+    private fun setupDeveloperCreditClick() {
+        binding.developerCreditText.paintFlags =
+            binding.developerCreditText.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+        binding.developerCreditText.setOnClickListener {
+            val subject = Uri.encode(getString(com.trailback.app.R.string.developer_email_subject))
+            val uri = Uri.parse("mailto:$DEVELOPER_EMAIL?subject=$subject")
+            startActivity(Intent(Intent.ACTION_SENDTO, uri))
         }
     }
     /**
@@ -114,6 +139,8 @@ class MenuActivity : KeepScreenOnActivity() {
          * — используется кнопкой "Выход" в постоянном уведомлении (см.
          * NotificationHelper.buildForegroundNotification). */
         const val EXTRA_AUTO_EXIT = "extra_auto_exit"
+        // НОВОЕ: почта разработчика — см. setupDeveloperCreditClick().
+        private const val DEVELOPER_EMAIL = "shkryabla@gmail.com"
     }
 }
 /** Иконки подобраны из Google Material Symbols (google/material-design-icons,

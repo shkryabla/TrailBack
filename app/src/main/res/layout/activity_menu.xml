@@ -16,20 +16,27 @@
         app:layout_constraintBottom_toTopOf="@id/developerCreditText"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
-    <!-- android:autoLink="email" — штатная функция Android: сама находит
-         email в тексте и делает кликабельным (открывает почтовый клиент
-         через mailto:), без ручного ClickableSpan/Intent в коде. -->
+    <!-- ИЗМЕНЕНО: android:autoLink="email" убран — он открывал голый
+         mailto: без темы письма. Тема нужна заранее ("Приложение,
+         ТропаДомой, TrailBack" — по просьбе), а autoLink такого не умеет
+         (не поддерживает query-параметры в mailto:), поэтому переход
+         собирается вручную в MenuActivity.setupDeveloperCreditClick() —
+         тот же паттерн (подчёркивание программно + selectableItemBackground
+         + clickable), что уже используется для compassWarningText в
+         CompassActivity. -->
     <TextView
         android:id="@+id/developerCreditText"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp"
+        android:padding="8dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
         android:gravity="center"
         android:text="@string/developer_credit"
         android:textColor="@color/text_gray"
         android:textSize="12sp"
-        android:autoLink="email"
-        android:textColorLink="@color/accent_orange"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />

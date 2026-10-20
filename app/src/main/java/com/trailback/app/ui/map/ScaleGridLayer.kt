@@ -42,13 +42,27 @@ class ScaleGridLayer(
 ) : Layer() {
 
     private val density = context.resources.displayMetrics.density
+    // НОВОЕ: цвет заглушки (фон под сеткой) — раньше задавался через
+    // newMapView.setBackgroundColor() на самом Android View, но MapView из
+    // Mapsforge рендерит слои в свой внутренний буфер и перед этим сам
+    // закрашивает канвас, не считаясь с обычным View-фоном — тот был
+    // попросту не виден. Теперь заливка — первое, что рисует этот слой, тем
+    // же проверенно рабочим путём (androidCanvas), каким уже рисуются линии
+    // сетки и подпись — единый источник правды, конфликтов по порядку
+    // отрисовки с подписью/линиями нет, т.к. заливка всегда идёт ДО них в
+    // одном и том же draw().
+    private val backgroundColor = ContextCompat.getColor(context, R.color.info_panel_bg)
     private val gridPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
         color = ContextCompat.getColor(context, R.color.scale_grid_line)
         strokeWidth = 1f * density
         style = AndroidPaint.Style.STROKE
     }
+    // ИЗМЕНЕНО: цвет подписи был info_panel_label (тёмный, #2A2A2A —
+    // рассчитан на светлый фон инфопанели) — по просьбе теперь тот же
+    // цвет, что и у линий сетки (scale_grid_line), подпись и линии читаются
+    // как единый, согласованный по цвету элемент.
     private val labelPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.info_panel_label)
+        color = ContextCompat.getColor(context, R.color.scale_grid_line)
         textSize = 14f * density
         textAlign = AndroidPaint.Align.LEFT
     }
@@ -60,6 +74,10 @@ class ScaleGridLayer(
         val canvasWidth = androidCanvas.width.toFloat()
         val canvasHeight = androidCanvas.height.toFloat()
         if (canvasWidth <= 0f || canvasHeight <= 0f) return
+
+        // Заливка фона — ПЕРВЫМ действием, до линий и подписи (иначе залила
+        // бы их сверху и "стёрла" визуально — см. обсуждение).
+        androidCanvas.drawColor(backgroundColor)
 
         val mapSize = MercatorProjection.getMapSize(zoomLevel, displayModel.tileSize)
         val centerLat = (boundingBox.minLatitude + boundingBox.maxLatitude) / 2.0
