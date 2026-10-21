@@ -80,7 +80,20 @@ class ScaleGridLayer(
         androidCanvas.drawColor(backgroundColor)
 
         val mapSize = MercatorProjection.getMapSize(zoomLevel, displayModel.tileSize)
-        val centerLat = (boundingBox.minLatitude + boundingBox.maxLatitude) / 2.0
+        // ИСПРАВЛЕНО (диагональный снос сетки при панорамировании): широта
+        // округляется до целого градуса, а не берётся "как есть" на каждый
+        // кадр. При чистом вертикальном жесте boundingBox.minLatitude/
+        // maxLatitude непрерывно меняются — без округления metersPerPixel
+        // (а с ним и pixelsPerCell) дрейфовал бы на каждый кадр, а ниже это
+        // же значение используется как ЗНАМЕНАТЕЛЬ квантования (floor(...)),
+        // из-за чего вертикальные линии "гуляли" по горизонтали даже при
+        // чисто вертикальном жесте без реального смещения по долготе —
+        // отсюда и диагональный снос. Один градус широты — это ~111 км,
+        // внутри одного жеста панорамирования эта граница не пересекается,
+        // так что pixelsPerCell становится стабильным на весь жест (меняется
+        // только на зуме или при реальном перемещении на сотни км), а
+        // точность самой величины шага в метрах теряется пренебрежимо мало.
+        val centerLat = Math.round((boundingBox.minLatitude + boundingBox.maxLatitude) / 2.0).toDouble()
         val metersPerPixel = cos(Math.toRadians(centerLat)) * EARTH_CIRCUMFERENCE_METERS / mapSize
         if (metersPerPixel <= 0.0 || metersPerPixel.isNaN()) return
 

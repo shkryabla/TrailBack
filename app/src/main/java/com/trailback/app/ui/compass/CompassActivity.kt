@@ -1,8 +1,10 @@
 package com.trailback.app.ui.compass
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.graphics.Paint
 import android.location.Location
 import android.os.Bundle
@@ -13,7 +15,14 @@ import android.text.style.AbsoluteSizeSpan
 import android.text.style.ForegroundColorSpan
 import com.trailback.app.ui.common.KeepScreenOnActivity
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.trailback.app.TrailBackApp
 import com.trailback.app.data.db.EntryPoint
 import com.trailback.app.data.repository.NorthMode
@@ -44,6 +53,29 @@ class CompassActivity : KeepScreenOnActivity() {
     private var lastLocation: Location? = null
     private var currentHeadingDegrees: Float = 0f
     private var locationObserverJob: kotlinx.coroutines.Job? = null
+    // НОВОЕ (фикс "спутники не отображаются"): TrackingService сознательно
+    // НЕ опрашивает GPS в TrackingMode.IDLE без активной цели (экономия
+    // батареи, см. TrackingService.startLocationUpdates) — а без активного
+    // запроса геопозиции чип GPS выключен, и GnssStatus.Callback в
+    // InfoPanelController физически нечему вызывать: спутники не
+    // определяются совсем, хотя сама панель подписана корректно. На экране
+    // карты это не заметно — там свой независимый foregroundLocationClient
+    // (см. MapActivity), держащий GPS активным, пока экран открыт. Здесь —
+    // ровно тот же, уже проверенный паттерн, а не новое решение.
+    private val foregroundLocationClient: FusedLocationProviderClient by lazy {
+        LocationServices.getFusedLocationProviderClient(this)
+    }
+    private val foregroundLocationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            val location = result.lastLocation ?: return
+            // Не трогаем lastLocation/recomputeArrow() — этим занимается
+            // locationObserverJob (поток TrackingService), чтобы не было
+            // двух конкурирующих источников для расчёта стрелки. Этот
+            // запрос нужен ТОЛЬКО ради побочного эффекта "GPS-чип включён"
+            // (спутники), заодно обновляем склонение — лишним не будет.
+            (application as TrailBackApp).compassSensorManager.updateLocationForDeclination(location)
+        }
+    }
     // Повторное EMA-сглаживание ИТОГОВОГО угла стрелки (азимут минус курс).
     // Нужно отдельно от курса телефона (там фильтр убран — см. решение по
     // CompassSensorManager): GPS-азимут на точку старта приходит рывками
@@ -127,6 +159,22 @@ class CompassActivity : KeepScreenOnActivity() {
         binding.compassView.layoutParams = params
     }
     private fun spToPx(sp: Float): Float = sp * resources.displayMetrics.scaledDensity
+    /** См. комментарий у foregroundLocationClient выше — единственная цель
+     * этого запроса здесь: держать GPS-чип включённым, пока экран компаса
+     * открыт, чтобы GnssStatus.Callback в InfoPanelController получал
+     * данные о спутниках. Интервал/точность — те же значения, что уже
+     * использует MapActivity.startForegroundOnlyLocationUpdates(). */
+    private fun startForegroundOnlyLocationUpdates() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) return
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000L).build()
+        try {
+            foregroundLocationClient.requestLocationUpdates(request, foregroundLocationCallback, mainLooper)
+        } catch (e: SecurityException) {
+            // Разрешение не выдано — просто не запускаем обновления.
+        }
+    }
     /**
      * Предупреждение о точности компаса кликабельно — по тапу открывает
      * пункт меню "Калибровка" (SECTION_CALIBRATION: инструкция + анимированная
@@ -173,6 +221,7 @@ class CompassActivity : KeepScreenOnActivity() {
         val app = application as TrailBackApp
         app.compassSensorManager.acquire()
         infoPanelController.start()
+        startForegroundOnlyLocationUpdates()
         isFirstArrowFrame = true // холодный старт стрелки на дом
         // Страховка: пересчитываем склонение по последней известной позиции
         // сразу при возобновлении, не дожидаясь следующего GPS-тика.
@@ -230,6 +279,7 @@ class CompassActivity : KeepScreenOnActivity() {
         headingObserverJob?.cancel()
         headingObserverJob = null
         infoPanelController.stop()
+        foregroundLocationClient.removeLocationUpdates(foregroundLocationCallback)
         smoothedArrowSin = null
         smoothedArrowCos = null
         isFirstArrowFrame = true // сброс флага вместе с очисткой фильтра
