@@ -39,17 +39,19 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/menu_offline_maps" />
-            <!-- НОВОЕ: пояснение, что в этой же папке появится подпапка
-                 автобэкапа — иначе выглядело бы как непрошеная папка,
-                 возникшая сама собой (см. BackupManager). -->
+            <!-- ИЗМЕНЕНО (по решению): бэкап больше не живёт в этой же папке —
+                 у него своя, выбирается отдельно при первом запуске (см.
+                 MapActivity.setupBackupFolderIfNeeded, BackupManager). Здесь —
+                 просто информационная строка, где он сейчас лежит (если уже
+                 выбран), без кнопки повторного выбора — это разовая настройка
+                 первого запуска, не часть обычного флоу работы с картами. -->
             <TextView
-                android:id="@+id/backupFolderHintText"
+                android:id="@+id/backupFolderInfoText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:textColor="@color/text_gray"
-                android:textSize="13sp"
-                android:text="@string/backup_folder_hint" />
+                android:textSize="13sp" />
             <!-- ИЗМЕНЕНО: отказались от подбора округа по городу
                  (справочник + автодополнение) — оказалось избыточно.
                  Текстовая подсказка сверху + простая текстовая ссылка на

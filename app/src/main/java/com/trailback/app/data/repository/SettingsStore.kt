@@ -17,9 +17,17 @@ class SettingsStore(context: Context) {
     var offlineMapsUri: String?
         get() = prefs.getString(KEY_OFFLINE_MAPS_URI, null)
         set(value) = prefs.edit { putString(KEY_OFFLINE_MAPS_URI, value) }
+    /** НОВОЕ: путь (URI) к папке "TrailBack" с бэкапом — независим от
+     * offlineMapsUri выше (см. решение по ТЗ: бэкап и карты больше не
+     * зависят от одного каталога). Выбирается один раз при первом запуске,
+     * см. MapActivity.setupBackupFolderIfNeeded. Пусто — ещё не выбрана. */
+    var backupFolderUri: String?
+        get() = prefs.getString(KEY_BACKUP_FOLDER_URI, null)
+        set(value) = prefs.edit { putString(KEY_BACKUP_FOLDER_URI, value) }
     companion object {
         private const val KEY_NORTH_MODE = "north_mode"
         private const val KEY_LANGUAGE = "language"
         private const val KEY_OFFLINE_MAPS_URI = "offline_maps_uri"
+        private const val KEY_BACKUP_FOLDER_URI = "backup_folder_uri"
     }
 }

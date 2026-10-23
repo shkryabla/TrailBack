@@ -36,33 +36,18 @@ class SettingsActivity : KeepScreenOnActivity() {
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
-            // ИСПРАВЛЕНО: раньше брался только FLAG_GRANT_READ_URI_PERMISSION —
-            // офлайн-карты действительно только читаются. Но с появлением
-            // автобэкапа (см. BackupManager, пишет trailback_backup/ в эту
-            // же папку) той же папке нужно ещё и право на запись, иначе
-            // DocumentFile.createDirectory()/createFile() будут падать с
-            // SecurityException при любой попытке бэкапа.
+            // ИЗМЕНЕНО (по решению): папка офлайн-карт теперь никак не связана
+            // с бэкапом (см. BackupManager, у него своя папка —
+            // settingsStore.backupFolderUri, выбирается отдельно при первом
+            // запуске в MapActivity) — только чтение, запись сюда больше не
+            // нужна.
             contentResolver.takePersistableUriPermission(
                 uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
             val app = application as TrailBackApp
             app.settingsStore.offlineMapsUri = uri.toString()
             updateMapsSectionText()
-            // ИСПРАВЛЕНО (баг потери данных при переустановке): раньше здесь
-            // сразу и безусловно вызывался backupNow() — на свежей установке
-            // Room пуста, и этот вызов молча перезаписывал существующий
-            // trailback_backup.json от предыдущей установки пустыми данными.
-            // Теперь сначала пробуем restoreIfPresent() — если бэкап найден,
-            // его содержимое тихо мержится в Room (см. BackupManager,
-            // конфликтующие id пропускаются, новые записи добавляются) —
-            // и только после этого делаем backupNow(), чтобы файл бэкапа
-            // остался консистентен с (возможно, только что восстановленным)
-            // состоянием БД.
-            lifecycleScope.launch {
-                app.backupManager.restoreIfPresent()
-                app.backupManager.backupNow()
-            }
         }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,9 +87,20 @@ class SettingsActivity : KeepScreenOnActivity() {
     }
     private fun setupMapsSection() {
         updateMapsSectionText()
+        updateBackupFolderInfoText()
         binding.chooseMapsFolderButton.setOnClickListener {
             pickMapsFolder.launch(null)
         }
+    }
+    /** НОВОЕ: чисто информационная строка — папка бэкапа теперь выбирается
+     * один раз при первом запуске (см. MapActivity.setupBackupFolderIfNeeded),
+     * а не отсюда; здесь только показываем, куда он сейчас пишется. */
+    private fun updateBackupFolderInfoText() {
+        val app = application as TrailBackApp
+        val uri = app.settingsStore.backupFolderUri
+        binding.backupFolderInfoText.text = uri?.let {
+            getString(R.string.backup_folder_info, humanReadableTreePath(it))
+        } ?: getString(R.string.backup_folder_not_set)
     }
     /**
      * ИЗМЕНЕНО: раньше показывался сырой content:// URI дерева (нечитаемо,

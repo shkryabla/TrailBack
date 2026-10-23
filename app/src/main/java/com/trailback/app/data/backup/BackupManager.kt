@@ -15,13 +15,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Автоматический бэкап точек входа, отмеченных мест и треков — по решению:
- * складывается в ту же SAF-папку, что выбрана под офлайн-карты
- * (SettingsStore.offlineMapsUri), в подпапку "trailback_backup". Смысл —
- * данные должны пережить удаление приложения, а внутреннее хранилище Room
- * (и даже getExternalFilesDir()!) при удалении приложения стирается Android
- * целиком, независимо от настроек; папка карт выбрана пользователем через
- * SAF и приложению не принадлежит — она переживает удаление приложения.
+ * Автоматический бэкап точек входа, отмеченных мест и треков.
+ *
+ * ИЗМЕНЕНО (по решению): раньше бэкап складывался в подпапку
+ * "trailback_backup" внутри ТОЙ ЖЕ папки, что выбрана под офлайн-карты
+ * (SettingsStore.offlineMapsUri) — один каталог отвечал за два независимых
+ * назначения. Теперь у бэкапа СВОЯ собственная папка
+ * (SettingsStore.backupFolderUri, обычно "TrailBack" в корне хранилища,
+ * см. MapActivity.setupBackupFolderIfNeeded — первый запуск) — выбор папки
+ * офлайн-карт в SettingsActivity больше никак не затрагивает бэкап и
+ * наоборот. JSON лежит прямо В КОРНЕ этой папки, без вложенной подпапки —
+ * она больше не делит место с чем-то ещё, подпапка не нужна.
+ *
+ * Смысл бэкапа: данные должны пережить удаление приложения, а внутреннее
+ * хранилище Room (и даже getExternalFilesDir()!) при удалении приложения
+ * стирается Android целиком, независимо от настроек; SAF-папка выбрана
+ * пользователем и приложению не принадлежит — она переживает удаление.
  *
  * Формат — обычный JSON через org.json (часть Android SDK, новой
  * зависимости не требует). Сознательно не копируем сырой .db файл Room
@@ -33,8 +42,8 @@ import org.json.JSONObject
  *
  * "Автоматически" означает — без отдельной кнопки: вызывается из мест,
  * где меняются точки входа/отмеченные места (см. вызовы backupNow() в
- * TrackingRepository, MapActivity, MarkedPlacesActivity, SettingsActivity),
- * а не по расписанию. WorkManager сознательно не подключаем — это новая
+ * TrackingRepository, MapActivity, MarkedPlacesActivity), а не по
+ * расписанию. WorkManager сознательно не подключаем — это новая
  * зависимость ради фоново-периодического запуска, которого сама фича не
  * требует: события изменения данных в этом приложении и так происходят
  * нечасто (не на каждый GPS-тик), а любое из них — естественный повод
@@ -48,21 +57,42 @@ class BackupManager(
     private val settingsStore: SettingsStore
 ) {
     /**
+     * НОВОЕ: первый шаг флоу первого запуска (см.
+     * MapActivity.setupBackupFolderIfNeeded) — ищет подпапку "TrailBack"
+     * внутри ВЫБРАННОЙ пользователем родительской папки (обычно корень
+     * внутренней памяти). НЕ создаёт — только проверяет. null, если такой
+     * подпапки нет (тогда вызывающий код должен спросить разрешения на
+     * создание, см. createTrailBackFolder) или родительская папка
+     * нечитаема.
+     */
+    fun findTrailBackFolder(parentTreeUri: Uri): DocumentFile? {
+        val parent = DocumentFile.fromTreeUri(context, parentTreeUri) ?: return null
+        return parent.findFile(TRAILBACK_DIR_NAME)?.takeIf { it.isDirectory }
+    }
+    /**
+     * Создаёт подпапку "TrailBack" внутри выбранной родительской папки —
+     * вызывается ТОЛЬКО после явного подтверждения пользователем в диалоге
+     * "Создать каталог для хранения маршрутов и отмеченных мест?" (см.
+     * MapActivity). null при ошибке SAF (например, нет прав на запись в
+     * выбранную папку).
+     */
+    fun createTrailBackFolder(parentTreeUri: Uri): DocumentFile? {
+        val parent = DocumentFile.fromTreeUri(context, parentTreeUri) ?: return null
+        return parent.createDirectory(TRAILBACK_DIR_NAME)
+    }
+
+    /**
      * Перезаписывает ОДИН файл фиксированного имени (не копит версии/историю
      * снимков) — самое простое поведение, отвечающее "актуальный бэкап
      * всегда лежит в одном известном месте". Тихо ничего не делает, если
-     * папка офлайн-карт ещё не выбрана — это нормальное состояние на первом
-     * запуске, не ошибка (как только пользователь выберет папку в
-     * настройках, оттуда же вызывается backupNow() — см. SettingsActivity).
+     * папка бэкапа ещё не выбрана — это нормальное состояние до завершения
+     * флоу первого запуска, не ошибка.
      */
     suspend fun backupNow() = withContext(Dispatchers.IO) {
-        val treeUriString = settingsStore.offlineMapsUri ?: return@withContext
+        val treeUriString = settingsStore.backupFolderUri ?: return@withContext
         try {
             val treeUri = Uri.parse(treeUriString)
-            val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext
-            val backupDir = root.findFile(BACKUP_FOLDER_NAME)?.takeIf { it.isDirectory }
-                ?: root.createDirectory(BACKUP_FOLDER_NAME)
-                ?: return@withContext
+            val backupDir = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext
             val entryPoints = entryPointDao.getAllOnce()
             val markedPlaces = markedPlaceDao.getAllOnce()
             val trackPoints = trackPointDao.getAllOnce()
@@ -83,35 +113,28 @@ class BackupManager(
     }
 
     /**
-     * НОВОЕ: устраняет баг потери данных при переустановке приложения —
-     * раньше при первом выборе папки карт (см. SettingsActivity.pickMapsFolder)
-     * сразу вызывался backupNow(), который БЕЗУСЛОВНО перезаписывал
-     * trailback_backup.json текущим (на свежей установке — ПУСТЫМ)
-     * состоянием Room, стирая существующий бэкап от предыдущей установки.
-     *
-     * Вызывать ДО первого backupNow() в этом же месте: если файл бэкапа
-     * найден — тихо восстанавливает его содержимое в Room (см.
-     * insertAllIgnoreConflict в каждом DAO) и возвращает true; если файла
-     * нет — ничего не делает и возвращает false, тогда вызывающий код
-     * создаёт бэкап впервые обычным backupNow().
+     * Устраняет баг потери данных при переустановке приложения — тихо
+     * восстанавливает содержимое уже найденной/созданной папки бэкапа (см.
+     * findTrailBackFolder/createTrailBackFolder) в Room, если файл бэкапа
+     * там уже есть (см. insertAllIgnoreConflict в каждом DAO), и
+     * возвращает true; если файла нет — ничего не делает и возвращает
+     * false, тогда вызывающий код создаёт бэкап впервые обычным backupNow().
      *
      * "Тихий merge" (по решению): если в Room на момент восстановления уже
-     * есть какие-то записи (папка карт была выбрана заново, а не сразу
-     * после установки), restore не затирает их и не спрашивает — записи с
-     * уже существующим id просто пропускаются (OnConflictStrategy.IGNORE),
-     * новые из бэкапа добавляются. Никакого диалога подтверждения.
+     * есть какие-то записи, restore не затирает их и не спрашивает —
+     * записи с уже существующим id просто пропускаются
+     * (OnConflictStrategy.IGNORE), новые из бэкапа добавляются. Никакого
+     * диалога подтверждения.
      *
      * Порядок вставки важен: точки входа — до точек трека, иначе
      * TrackPoint.entryPointId на момент вставки ссылался бы на ещё не
      * существующую запись.
      */
     suspend fun restoreIfPresent(): Boolean = withContext(Dispatchers.IO) {
-        val treeUriString = settingsStore.offlineMapsUri ?: return@withContext false
+        val treeUriString = settingsStore.backupFolderUri ?: return@withContext false
         try {
             val treeUri = Uri.parse(treeUriString)
-            val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext false
-            val backupDir = root.findFile(BACKUP_FOLDER_NAME)?.takeIf { it.isDirectory }
-                ?: return@withContext false
+            val backupDir = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext false
             val backupFile = backupDir.findFile(BACKUP_FILE_NAME) ?: return@withContext false
             val jsonText = context.contentResolver.openInputStream(backupFile.uri)
                 ?.use { it.readBytes().toString(Charsets.UTF_8) }
@@ -157,8 +180,8 @@ class BackupManager(
             trackPointDao.insertAllIgnoreConflict(trackPoints)
             true
         } catch (e: Exception) {
-            // Повреждённый/нечитаемый файл бэкапа не должен ронять выбор
-            // папки — просто считаем, что восстанавливать было нечего.
+            // Повреждённый/нечитаемый файл бэкапа не должен ронять флоу
+            // первого запуска — просто считаем, что восстанавливать было нечего.
             false
         }
     }
@@ -209,11 +232,13 @@ class BackupManager(
     }
 
     companion object {
-        private const val BACKUP_FOLDER_NAME = "trailback_backup"
+        // НОВОЕ: имя папки, которую ищем/создаём в корне выбранного
+        // пользователем родителя (см. findTrailBackFolder/createTrailBackFolder).
+        private const val TRAILBACK_DIR_NAME = "TrailBack"
         private const val BACKUP_FILE_NAME = "trailback_backup.json"
-        // НОВОЕ: версия формата бэкапа — если структура JSON изменится в
-        // будущем (например, появится импорт), по этому полю можно будет
-        // понять, какой парсер применять к файлу.
+        // Версия формата бэкапа — если структура JSON изменится в будущем
+        // (например, появится импорт), по этому полю можно будет понять,
+        // какой парсер применять к файлу.
         private const val BACKUP_FORMAT_VERSION = 1
     }
 }

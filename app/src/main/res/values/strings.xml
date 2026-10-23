@@ -37,7 +37,13 @@
     <!-- НОВОЕ: прогресс копирования большого .map файла в кэш при первом открытии -->
     <string name="map_loading_progress">Loading map… %1$d%%</string>
     <!-- НОВОЕ: пояснение про подпапку автобэкапа в той же папке -->
-    <string name="backup_folder_hint">A "trailback_backup" subfolder is automatically created here to store an up-to-date backup of your start points, marked places, and tracks — it survives even if the app is uninstalled.</string>
+    <string name="backup_folder_info">Backup folder: %1$s</string>
+    <string name="backup_folder_not_set">Backup folder not chosen yet</string>
+    <string name="backup_setup_title">Backup folder</string>
+    <string name="backup_setup_message">So your start points, marked places, and tracks survive even if the app is uninstalled, choose a folder for backups (e.g. the root of internal storage) — the app will create a "TrailBack" folder inside it.</string>
+    <string name="backup_setup_later">Not now</string>
+    <string name="backup_create_folder_confirm">Create a "TrailBack" folder to store routes and marked places?</string>
+    <string name="backup_setup_failed">Couldn\'t set up the backup folder — try choosing another one</string>
     <!-- НОВОЕ: подсказка + кнопка для ручного скачивания офлайн-карты по
          федеральному округу (см. SettingsActivity) -->
     <string name="download_map_hint_text">An offline map is optional — the app records your route and guides you home without one; a map just adds landmarks on the ground (trails, streams, roads). If you\'d still like to download one: first figure out which federal district your region belongs to (e.g. search "[your region] federal district" or check Wikipedia). Then tap the button below to open the file list and download the .map file for your district.\n\nThe file server is provided by the Mapsforge project (github.com/mapsforge/mapsforge) and may be temporarily unavailable — if so, check the "Mapsforge map providers" page in their repository (docs/Mapsforge-Maps.md) for alternative sources.\n\nSome files are larger than 1 GB — downloading may take a while, especially on mobile data.</string>
