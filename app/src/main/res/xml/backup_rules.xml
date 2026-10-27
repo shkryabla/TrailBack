@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- НОВОЕ (предрелизный аудит): у приложения уже есть СВОЙ независимый
+     механизм бэкапа/восстановления (BackupManager, SAF-папка, выбирается
+     явно пользователем при первом запуске). Системный Android Auto Backup
+     (android:allowBackup="true" в манифесте) — включён по умолчанию и
+     работает совершенно отдельно, без ведома приложения: если не исключить
+     отсюда Room-базу и SharedPreferences, при восстановлении устройства из
+     Google-бэкапа система сама подложит старую версию trailback.db и
+     tracking_state.xml — и это восстановление случится ДО или независимо от
+     BackupManager.restoreIfPresent(), без всякой координации между ними.
+     Два параллельных источника правды для одних и тех же данных — риск
+     гонки и путаницы, а не дополнительная подстраховка. Проще и безопаснее
+     исключить всё отсюда полностью и оставить ЕДИНСТВЕННЫМ источником
+     восстановления явный SAF-бэкап, которым приложение управляет само. -->
+<full-backup-content>
+    <exclude domain="database" path="trailback.db" />
+    <exclude domain="database" path="trailback.db-wal" />
+    <exclude domain="database" path="trailback.db-shm" />
+    <exclude domain="sharedpref" path="settings.xml" />
+    <exclude domain="sharedpref" path="tracking_state.xml" />
+</full-backup-content>

@@ -201,6 +201,13 @@ class MapController(
             }
             cacheFile
         } catch (e: Exception) {
+            // НОВОЕ (предрелизный аудит): это самый вероятный путь, из-за
+            // которого выбранная офлайн-карта "молча" не открывается —
+            // битый файл, нет прав на чтение SAF-папки, обрыв на середине
+            // копирования 600+ МБ файла. Раньше пользователь просто видел
+            // заглушку без единой подсказки, почему — теперь хотя бы в
+            // Logcat будет видна причина.
+            android.util.Log.w(TAG, "resolveFirstMapFile() failed for $treeUriString", e)
             null
         }
     }
@@ -733,6 +740,8 @@ class MapController(
         AndroidGraphicFactory.clearResourceMemoryCache()
     }
     companion object {
+        // НОВОЕ (предрелизный аудит): тег для Log.w в resolveFirstMapFile().
+        private const val TAG = "MapController"
         private const val ACCENT_COLOR_MAPSFORGE = 0xFFE65100.toInt()
         // НОВОЕ: цвет для "взятия направления" — фиолетовый, чтобы визуально
         // не путать с оранжевой линией/стрелкой режима "Домой".

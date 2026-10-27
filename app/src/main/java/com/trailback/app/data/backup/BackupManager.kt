@@ -109,6 +109,10 @@ class BackupManager(
         } catch (e: Exception) {
             // Бэкап — вспомогательная функция; сбой SAF/диска не должен
             // ронять основной сценарий (запись маршрута, отметка места).
+            // НОВОЕ (предрелизный аудит): раньше ошибка проглатывалась молча
+            // без единого следа — при жалобе на пропавший бэкап не было бы
+            // вообще никакой зацепки в Logcat, что именно пошло не так.
+            android.util.Log.w(TAG, "backupNow() failed", e)
         }
     }
 
@@ -182,6 +186,7 @@ class BackupManager(
         } catch (e: Exception) {
             // Повреждённый/нечитаемый файл бэкапа не должен ронять флоу
             // первого запуска — просто считаем, что восстанавливать было нечего.
+            android.util.Log.w(TAG, "restoreIfPresent() failed", e)
             false
         }
     }
@@ -232,6 +237,9 @@ class BackupManager(
     }
 
     companion object {
+        // НОВОЕ (предрелизный аудит): тег для Log.w в catch-блоках выше —
+        // раньше ошибки SAF/диска проглатывались совсем без следа.
+        private const val TAG = "BackupManager"
         // НОВОЕ: имя папки, которую ищем/создаём в корне выбранного
         // пользователем родителя (см. findTrailBackFolder/createTrailBackFolder).
         private const val TRAILBACK_DIR_NAME = "TrailBack"

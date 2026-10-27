@@ -13,8 +13,12 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import com.trailback.app.ui.common.KeepScreenOnActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.trailback.app.R
 import com.trailback.app.TrailBackApp
@@ -32,15 +36,28 @@ class MarkedPlacesActivity : KeepScreenOnActivity() {
         setContentView(binding.root)
         val app = application as TrailBackApp
         binding.list.layoutManager = LinearLayoutManager(this)
+        // ИЗМЕНЕНО (предрелизный аудит): раньше на КАЖДУЮ эмиссию Flow
+        // создавался новый MarkedPlacesAdapter(places, ...) — полный relayout
+        // списка, сброс позиции скролла, никаких анимаций даже на изменение
+        // одной записи. Теперь — один and тот же ListAdapter + DiffUtil,
+        // создаётся единожды, дальше только submitList() на каждую эмиссию.
+        val adapter = MarkedPlacesAdapter(
+            onOpenInNavigation = ::openInNavigationApp,
+            onCopyCoordinates = ::copyCoordinates,
+            onShowOnMap = ::showOnMap,
+            onDeleteRequested = ::confirmDelete
+        )
+        binding.list.adapter = adapter
+        // ИЗМЕНЕНО: repeatOnLifecycle(STARTED) — Flow не собирается, пока
+        // экран не на переднем плане (раньше lifecycleScope.launch сам по
+        // себе продолжал бы собирать и в STOPPED, просто впустую — список
+        // всё равно не виден, а работа и аллокации на каждую эмиссию БД
+        // шли бы в фоне без всякой пользы).
         lifecycleScope.launch {
-            app.database.markedPlaceDao().observeAll().collect { places ->
-                binding.list.adapter = MarkedPlacesAdapter(
-                    items = places,
-                    onOpenInNavigation = ::openInNavigationApp,
-                    onCopyCoordinates = ::copyCoordinates,
-                    onShowOnMap = ::showOnMap,
-                    onDeleteRequested = ::confirmDelete
-                )
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                app.database.markedPlaceDao().observeAll().collect { places ->
+                    adapter.submitList(places)
+                }
             }
         }
         // НОВОЕ: кнопка "+" — ручное добавление места по введённым координатам
@@ -146,20 +163,23 @@ class MarkedPlacesActivity : KeepScreenOnActivity() {
         return latitude to longitude
     }
 }
+/** ИЗМЕНЕНО (предрелизный аудит): RecyclerView.Adapter -> ListAdapter с
+ * DiffUtil.ItemCallback — items больше не передаётся в конструктор, список
+ * обновляется через submitList(), DiffUtil сам вычисляет точечные изменения
+ * вместо полного relayout на каждую эмиссию БД. */
 class MarkedPlacesAdapter(
-    private val items: List<MarkedPlace>,
     private val onOpenInNavigation: (MarkedPlace) -> Unit,
     private val onCopyCoordinates: (MarkedPlace) -> Unit,
     private val onShowOnMap: (MarkedPlace) -> Unit,
     private val onDeleteRequested: (MarkedPlace) -> Unit
-) : RecyclerView.Adapter<MarkedPlacesAdapter.ViewHolder>() {
+) : ListAdapter<MarkedPlace, MarkedPlacesAdapter.ViewHolder>(DIFF_CALLBACK) {
     inner class ViewHolder(val binding: ItemMarkedPlaceRowBinding) : RecyclerView.ViewHolder(binding.root)
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemMarkedPlaceRowBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return ViewHolder(binding)
     }
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val place = items[position]
+        val place = getItem(position)
         holder.binding.nameText.text = place.name
         holder.binding.coordinatesText.text =
             String.format(Locale.getDefault(), "%.5f, %.5f", place.latitude, place.longitude)
@@ -180,5 +200,11 @@ class MarkedPlacesAdapter(
             popup.show()
         }
     }
-    override fun getItemCount() = items.size
+    companion object {
+        private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<MarkedPlace>() {
+            override fun areItemsTheSame(oldItem: MarkedPlace, newItem: MarkedPlace) = oldItem.id == newItem.id
+            // MarkedPlace — data class, equals() сравнивает все поля структурно.
+            override fun areContentsTheSame(oldItem: MarkedPlace, newItem: MarkedPlace) = oldItem == newItem
+        }
+    }
 }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- См. подробное обоснование в backup_rules.xml (тот же файл, но для
+     API 23-30 через android:fullBackupContent) — здесь то же самое правило
+     для API 31+ через android:dataExtractionRules: и облачный бэкап, и
+     прямой перенос на новое устройство исключают Room-базу и
+     SharedPreferences, оставляя единственным источником восстановления
+     явный SAF-бэкап приложения (BackupManager). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="trailback.db" />
+        <exclude domain="database" path="trailback.db-wal" />
+        <exclude domain="database" path="trailback.db-shm" />
+        <exclude domain="sharedpref" path="settings.xml" />
+        <exclude domain="sharedpref" path="tracking_state.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="trailback.db" />
+        <exclude domain="database" path="trailback.db-wal" />
+        <exclude domain="database" path="trailback.db-shm" />
+        <exclude domain="sharedpref" path="settings.xml" />
+        <exclude domain="sharedpref" path="tracking_state.xml" />
+    </device-transfer>
+</data-extraction-rules>

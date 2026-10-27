@@ -12,8 +12,12 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.trailback.app.ui.common.KeepScreenOnActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.trailback.app.R
 import com.trailback.app.TrailBackApp
@@ -41,13 +45,22 @@ class EntryPointsActivity : KeepScreenOnActivity() {
         setContentView(binding.root)
         val app = application as TrailBackApp
         binding.list.layoutManager = LinearLayoutManager(this)
+        // ИЗМЕНЕНО (предрелизный аудит): раньше на КАЖДУЮ эмиссию Flow
+        // создавался новый EntryPointsAdapter(points, ...) — полный relayout
+        // списка на любое изменение. Теперь — ListAdapter + DiffUtil,
+        // создаётся единожды, обновляется через submitList().
+        val adapter = EntryPointsAdapter(
+            onTap = { point -> onEntryPointTapped(app, point) },
+            onLongPress = { point -> copyCoordinates(point) }
+        )
+        binding.list.adapter = adapter
+        // ИЗМЕНЕНО: repeatOnLifecycle(STARTED) — не собираем Flow, пока
+        // экран не на переднем плане (см. тот же фикс в MarkedPlacesActivity).
         lifecycleScope.launch {
-            app.trackingRepository.observeEntryPoints().collect { points ->
-                binding.list.adapter = EntryPointsAdapter(
-                    items = points,
-                    onTap = { point -> onEntryPointTapped(app, point) },
-                    onLongPress = { point -> copyCoordinates(point) }
-                )
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                app.trackingRepository.observeEntryPoints().collect { points ->
+                    adapter.submitList(points)
+                }
             }
         }
         binding.clearAllButton.setOnClickListener {
@@ -130,18 +143,19 @@ class EntryPointsActivity : KeepScreenOnActivity() {
             .show()
     }
 }
+/** ИЗМЕНЕНО (предрелизный аудит): RecyclerView.Adapter -> ListAdapter с
+ * DiffUtil.ItemCallback — см. тот же фикс в MarkedPlacesAdapter. */
 class EntryPointsAdapter(
-    private val items: List<EntryPoint>,
     private val onTap: (EntryPoint) -> Unit,
     private val onLongPress: (EntryPoint) -> Unit
-) : RecyclerView.Adapter<EntryPointsAdapter.ViewHolder>() {
+) : ListAdapter<EntryPoint, EntryPointsAdapter.ViewHolder>(DIFF_CALLBACK) {
     inner class ViewHolder(val binding: ItemMenuRowBinding) : RecyclerView.ViewHolder(binding.root)
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemMenuRowBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return ViewHolder(binding)
     }
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val point = items[position]
+        val point = getItem(position)
         // Дата/время уже часть point.name (см. решение по ТЗ — формат
         // "Вход - сб. 05.09.26 г. 14:07"), координаты в списке не нужны.
         holder.binding.titleText.text = point.name
@@ -156,5 +170,11 @@ class EntryPointsAdapter(
             true
         }
     }
-    override fun getItemCount() = items.size
+    companion object {
+        private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<EntryPoint>() {
+            override fun areItemsTheSame(oldItem: EntryPoint, newItem: EntryPoint) = oldItem.id == newItem.id
+            // EntryPoint — data class, equals() сравнивает все поля структурно.
+            override fun areContentsTheSame(oldItem: EntryPoint, newItem: EntryPoint) = oldItem == newItem
+        }
+    }
 }

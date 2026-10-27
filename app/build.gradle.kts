@@ -109,6 +109,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:${property("versionLifecycle")}")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:${property("versionLifecycle")}")
     implementation("androidx.lifecycle:lifecycle-service:${property("versionLifecycle")}")
+    // НОВОЕ (предрелизный аудит): repeatOnLifecycle() — используется в
+    // EntryPointsActivity/MarkedPlacesActivity, чтобы не собирать Flow из
+    // БД, пока экран не на переднем плане. Раньше этого модуля не было в
+    // зависимостях вообще — без него эти два файла просто не скомпилировались бы.
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:${property("versionLifecycle")}")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:${property("versionCoroutines")}")
 
     // Room
