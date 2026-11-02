@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.location.Location
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -23,6 +22,7 @@ import com.trailback.app.data.repository.TrackingMode
 import com.trailback.app.databinding.ActivityMapBinding
 import com.trailback.app.service.TrackingService
 import com.trailback.app.ui.compass.CompassActivity
+import com.trailback.app.ui.common.BackupSetupController
 import com.trailback.app.ui.common.InfoPanelController
 import com.trailback.app.ui.menu.MenuActivity
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -98,20 +98,12 @@ class MapActivity : KeepScreenOnActivity() {
             startTrackingServiceIfNeeded()
         }
     }
-    /** НОВОЕ: флоу первого запуска — выбор НЕЗАВИСИМОЙ папки под бэкап (см.
-     * setupBackupFolderIfNeeded ниже). Пользователь выбирает РОДИТЕЛЬСКУЮ
-     * папку (обычно корень памяти) — внутри неё ищется/создаётся "TrailBack". */
-    private val pickBackupParentFolder = registerForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri != null) {
-            contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-            onBackupParentFolderPicked(uri)
-        }
-    }
+    /** ИЗМЕНЕНО (предрелизный аудит): флоу первого запуска "выбрать/создать
+     * папку бэкапа" (SAF-пикер + два диалога) вынесен в отдельный
+     * BackupSetupController — раньше это были ~110 строк прямо здесь.
+     * Создаётся как свойство, т.е. ДО STARTED — того требует
+     * registerForActivityResult внутри контроллера. */
+    private val backupSetup = BackupSetupController(this)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMapBinding.inflate(layoutInflater)
@@ -155,70 +147,7 @@ class MapActivity : KeepScreenOnActivity() {
             }
         }
         refreshNavigationTargetUi()
-        setupBackupFolderIfNeeded(app)
-    }
-    /**
-     * НОВОЕ: флоу первого запуска — папка бэкапа теперь независима от папки
-     * офлайн-карт (см. решение по ТЗ), выбирается один раз здесь, а не
-     * заодно при выборе карт (как было раньше, см. SettingsActivity).
-     *
-     * Шаги: 1) если backupFolderUri уже выбран — ничего не делаем;
-     * 2) иначе показываем объясняющий диалог и открываем системный SAF-
-     * пикер на РОДИТЕЛЬСКУЮ папку (обычно корень памяти);
-     * 3) после выбора — ищем подпапку "TrailBack" внутри неё
-     * (findTrailBackFolder); 4) если нашли — тихо восстанавливаем из неё
-     * бэкап (та же логика, что раньше была в SettingsActivity.pickMapsFolder)
-     * и используем её дальше; 5) если НЕ нашли — спрашиваем явное
-     * подтверждение ("Создать каталог...?") и создаём только после "Да".
-     *
-     * Если пользователь откажется (кнопка "Не сейчас" или системный пикер
-     * отменён) — backupFolderUri остаётся null, и на следующий холодный
-     * старт приложения этот же диалог покажется снова (см. условие выше).
-     */
-    private fun setupBackupFolderIfNeeded(app: TrailBackApp) {
-        if (app.settingsStore.backupFolderUri != null) return
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.backup_setup_title)
-            .setMessage(R.string.backup_setup_message)
-            .setCancelable(false)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> pickBackupParentFolder.launch(null) }
-            .setNegativeButton(R.string.backup_setup_later, null)
-            .show()
-    }
-    private fun onBackupParentFolderPicked(parentUri: Uri) {
-        val app = application as TrailBackApp
-        lifecycleScope.launch {
-            val existing = app.backupManager.findTrailBackFolder(parentUri)
-            if (existing != null) {
-                // Папка "TrailBack" уже есть в выбранном месте (скорее всего —
-                // переустановка приложения) — используем как есть, тихо
-                // восстанавливаем из неё данные, ничего не спрашиваем.
-                app.settingsStore.backupFolderUri = existing.uri.toString()
-                app.backupManager.restoreIfPresent()
-                app.backupManager.backupNow()
-            } else {
-                showCreateBackupFolderConfirmDialog(parentUri)
-            }
-        }
-    }
-    private fun showCreateBackupFolderConfirmDialog(parentUri: Uri) {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setMessage(R.string.backup_create_folder_confirm)
-            .setCancelable(false)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                val app = application as TrailBackApp
-                lifecycleScope.launch {
-                    val created = app.backupManager.createTrailBackFolder(parentUri)
-                    if (created != null) {
-                        app.settingsStore.backupFolderUri = created.uri.toString()
-                        app.backupManager.backupNow()
-                    } else {
-                        Toast.makeText(this@MapActivity, R.string.backup_setup_failed, Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-            .setNegativeButton(R.string.arrived_dialog_no, null)
-            .show()
+        backupSetup.startIfNeeded()
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

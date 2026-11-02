@@ -93,7 +93,7 @@ class SettingsActivity : KeepScreenOnActivity() {
         }
     }
     /** НОВОЕ: чисто информационная строка — папка бэкапа теперь выбирается
-     * один раз при первом запуске (см. MapActivity.setupBackupFolderIfNeeded),
+     * один раз при первом запуске (см. BackupSetupController.startIfNeeded),
      * а не отсюда; здесь только показываем, куда он сейчас пишется. */
     private fun updateBackupFolderInfoText() {
         val app = application as TrailBackApp

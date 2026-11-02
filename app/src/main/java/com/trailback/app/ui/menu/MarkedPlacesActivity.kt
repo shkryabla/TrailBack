@@ -14,6 +14,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import com.trailback.app.ui.common.KeepScreenOnActivity
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.DiffUtil
@@ -28,19 +29,23 @@ import com.trailback.app.databinding.ItemMarkedPlaceRowBinding
 import com.trailback.app.ui.map.MapActivity
 import kotlinx.coroutines.launch
 import java.util.Locale
+
+/**
+ * ИЗМЕНЕНО (предрелизный аудит): вся работа с MarkedPlaceDao и BackupManager
+ * вынесена в MarkedPlacesViewModel — Activity теперь отвечает только за UI
+ * (диалоги, PopupMenu, запуск geo:/mailto:/MapActivity интентов) и
+ * подписку на places. См. MarkedPlacesViewModel для бизнес-логики.
+ */
 class MarkedPlacesActivity : KeepScreenOnActivity() {
     private lateinit var binding: ActivityMarkedPlacesBinding
+    private lateinit var viewModel: MarkedPlacesViewModel
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMarkedPlacesBinding.inflate(layoutInflater)
         setContentView(binding.root)
         val app = application as TrailBackApp
+        viewModel = ViewModelProvider(this, MarkedPlacesViewModel.Factory(app))[MarkedPlacesViewModel::class.java]
         binding.list.layoutManager = LinearLayoutManager(this)
-        // ИЗМЕНЕНО (предрелизный аудит): раньше на КАЖДУЮ эмиссию Flow
-        // создавался новый MarkedPlacesAdapter(places, ...) — полный relayout
-        // списка, сброс позиции скролла, никаких анимаций даже на изменение
-        // одной записи. Теперь — один and тот же ListAdapter + DiffUtil,
-        // создаётся единожды, дальше только submitList() на каждую эмиссию.
         val adapter = MarkedPlacesAdapter(
             onOpenInNavigation = ::openInNavigationApp,
             onCopyCoordinates = ::copyCoordinates,
@@ -48,22 +53,14 @@ class MarkedPlacesActivity : KeepScreenOnActivity() {
             onDeleteRequested = ::confirmDelete
         )
         binding.list.adapter = adapter
-        // ИЗМЕНЕНО: repeatOnLifecycle(STARTED) — Flow не собирается, пока
-        // экран не на переднем плане (раньше lifecycleScope.launch сам по
-        // себе продолжал бы собирать и в STOPPED, просто впустую — список
-        // всё равно не виден, а работа и аллокации на каждую эмиссию БД
-        // шли бы в фоне без всякой пользы).
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                app.database.markedPlaceDao().observeAll().collect { places ->
+                viewModel.places.collect { places ->
                     adapter.submitList(places)
                 }
             }
         }
-        // НОВОЕ: кнопка "+" — ручное добавление места по введённым координатам
-        // (раньше места создавались только по текущей геопозиции или долгим
-        // тапом на карте).
-        binding.addPlaceButton.setOnClickListener { showAddPlaceDialog(app) }
+        binding.addPlaceButton.setOnClickListener { showAddPlaceDialog() }
     }
     private fun openInNavigationApp(place: MarkedPlace) {
         // geo: URI — система сама предложит установленные навигационные приложения
@@ -78,11 +75,11 @@ class MarkedPlacesActivity : KeepScreenOnActivity() {
         clipboard.setPrimaryClip(ClipData.newPlainText("coordinates", text))
         Toast.makeText(this, R.string.coordinates_copied, Toast.LENGTH_SHORT).show()
     }
-    /** НОВОЕ: "Показать на карте" — открывает/поднимает MapActivity и
-     * центрирует её на координатах места (см. MapController.centerOn).
-     * MapActivity — launcher-активность с launchMode="singleTop", почти
-     * всегда уже жива в стеке ниже текущего экрана, поэтому
-     * FLAG_ACTIVITY_CLEAR_TOP поднимает именно её, не пересоздавая. */
+    /** "Показать на карте" — открывает/поднимает MapActivity и центрирует
+     * её на координатах места (см. MapController.centerOn). MapActivity —
+     * launcher-активность с launchMode="singleTop", почти всегда уже жива
+     * в стеке ниже текущего экрана, поэтому FLAG_ACTIVITY_CLEAR_TOP
+     * поднимает именно её, не пересоздавая. */
     private fun showOnMap(place: MarkedPlace) {
         val intent = Intent(this, MapActivity::class.java).apply {
             action = MapActivity.ACTION_CENTER_ON_PLACE
@@ -93,28 +90,23 @@ class MarkedPlacesActivity : KeepScreenOnActivity() {
         startActivity(intent)
     }
     private fun confirmDelete(place: MarkedPlace) {
-        val app = application as TrailBackApp
         AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setMessage(place.name)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                lifecycleScope.launch {
-                    app.database.markedPlaceDao().delete(place)
-                    app.backupManager.backupNow()
-                }
-            }
+            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> viewModel.delete(place) }
             .setNegativeButton(R.string.arrived_dialog_no, null)
             .show()
     }
     /**
-     * НОВОЕ: диалог ручного добавления места — два поля (название,
-     * координаты вида "широта, долгота"), стиль — тот же
-     * TrailBackAlertDialogTheme, что и у предупреждений (см. themes.xml).
-     * Позитивная кнопка переопределяется вручную через setOnShowListener,
-     * чтобы при невалидном вводе диалог НЕ закрывался сам (штатное
-     * поведение AlertDialog — закрыть по любой кнопке), а показывал Toast
-     * с ошибкой и оставался открытым для исправления.
+     * Диалог ручного добавления места — два поля (название, координаты вида
+     * "широта, долгота"), стиль — тот же TrailBackAlertDialogTheme, что и у
+     * предупреждений. Позитивная кнопка переопределяется вручную через
+     * setOnShowListener, чтобы при невалидном вводе диалог НЕ закрывался
+     * сам (штатное поведение AlertDialog — закрыть по любой кнопке), а
+     * показывал Toast с ошибкой и оставался открытым для исправления.
+     * Валидация и сама вставка — в MarkedPlacesViewModel.addPlace(), Activity
+     * здесь только читает поля ввода и реагирует на true/false результата.
      */
-    private fun showAddPlaceDialog(app: TrailBackApp) {
+    private fun showAddPlaceDialog() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_marked_place, null)
         val nameInput = dialogView.findViewById<EditText>(R.id.nameInput)
         val coordinatesInput = dialogView.findViewById<EditText>(R.id.coordinatesInput)
@@ -126,47 +118,23 @@ class MarkedPlacesActivity : KeepScreenOnActivity() {
             .create()
         dialog.setOnShowListener {
             dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val name = nameInput.text?.toString()?.trim().orEmpty()
-                val coordinates = parseCoordinates(coordinatesInput.text?.toString())
-                if (name.isEmpty() || coordinates == null) {
+                val added = viewModel.addPlace(
+                    name = nameInput.text?.toString().orEmpty(),
+                    coordinatesRaw = coordinatesInput.text?.toString()
+                )
+                if (added) {
+                    dialog.dismiss()
+                } else {
                     Toast.makeText(this, R.string.add_place_invalid_input, Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
                 }
-                val (latitude, longitude) = coordinates
-                lifecycleScope.launch {
-                    app.database.markedPlaceDao().insert(
-                        MarkedPlace(
-                            name = name,
-                            latitude = latitude,
-                            longitude = longitude,
-                            timestamp = System.currentTimeMillis()
-                        )
-                    )
-                    app.backupManager.backupNow()
-                }
-                dialog.dismiss()
             }
         }
         dialog.show()
     }
-    /** Разбирает строку вида "55.75124, 37.61842" (тот же формат, в котором
-     * координаты показываются и копируются по всему приложению — см.
-     * copyCoordinates выше) — null при любой некорректности (не то число
-     * частей, не парсится как Double, широта/долгота вне допустимого
-     * диапазона). */
-    private fun parseCoordinates(raw: String?): Pair<Double, Double>? {
-        val parts = raw?.split(",")?.map { it.trim() } ?: return null
-        if (parts.size != 2) return null
-        val latitude = parts[0].toDoubleOrNull() ?: return null
-        val longitude = parts[1].toDoubleOrNull() ?: return null
-        if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) return null
-        return latitude to longitude
-    }
 }
-/** ИЗМЕНЕНО (предрелизный аудит): RecyclerView.Adapter -> ListAdapter с
- * DiffUtil.ItemCallback — items больше не передаётся в конструктор, список
- * обновляется через submitList(), DiffUtil сам вычисляет точечные изменения
- * вместо полного relayout на каждую эмиссию БД. */
+/** ListAdapter + DiffUtil — создаётся единожды в onCreate, обновляется
+ * через submitList() на каждую эмиссию places (см. предрелизный аудит:
+ * раньше адаптер пересоздавался на каждое изменение БД целиком). */
 class MarkedPlacesAdapter(
     private val onOpenInNavigation: (MarkedPlace) -> Unit,
     private val onCopyCoordinates: (MarkedPlace) -> Unit,
@@ -183,8 +151,6 @@ class MarkedPlacesAdapter(
         holder.binding.nameText.text = place.name
         holder.binding.coordinatesText.text =
             String.format(Locale.getDefault(), "%.5f, %.5f", place.latitude, place.longitude)
-        // ИЗМЕНЕНО: было три отдельные кнопки — теперь одна кнопка overflow
-        // открывает PopupMenu (см. res/menu/marked_place_actions.xml).
         holder.binding.overflowButton.setOnClickListener { anchor ->
             val popup = PopupMenu(anchor.context, anchor)
             popup.menuInflater.inflate(R.menu.marked_place_actions, popup.menu)
@@ -203,7 +169,6 @@ class MarkedPlacesAdapter(
     companion object {
         private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<MarkedPlace>() {
             override fun areItemsTheSame(oldItem: MarkedPlace, newItem: MarkedPlace) = oldItem.id == newItem.id
-            // MarkedPlace — data class, equals() сравнивает все поля структурно.
             override fun areContentsTheSame(oldItem: MarkedPlace, newItem: MarkedPlace) = oldItem == newItem
         }
     }

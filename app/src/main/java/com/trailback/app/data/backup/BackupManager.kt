@@ -22,7 +22,7 @@ import org.json.JSONObject
  * (SettingsStore.offlineMapsUri) — один каталог отвечал за два независимых
  * назначения. Теперь у бэкапа СВОЯ собственная папка
  * (SettingsStore.backupFolderUri, обычно "TrailBack" в корне хранилища,
- * см. MapActivity.setupBackupFolderIfNeeded — первый запуск) — выбор папки
+ * см. BackupSetupController.startIfNeeded — первый запуск) — выбор папки
  * офлайн-карт в SettingsActivity больше никак не затрагивает бэкап и
  * наоборот. JSON лежит прямо В КОРНЕ этой папки, без вложенной подпапки —
  * она больше не делит место с чем-то ещё, подпапка не нужна.
@@ -57,28 +57,50 @@ class BackupManager(
     private val settingsStore: SettingsStore
 ) {
     /**
-     * НОВОЕ: первый шаг флоу первого запуска (см.
-     * MapActivity.setupBackupFolderIfNeeded) — ищет подпапку "TrailBack"
-     * внутри ВЫБРАННОЙ пользователем родительской папки (обычно корень
-     * внутренней памяти). НЕ создаёт — только проверяет. null, если такой
-     * подпапки нет (тогда вызывающий код должен спросить разрешения на
-     * создание, см. createTrailBackFolder) или родительская папка
-     * нечитаема.
+     * Первый шаг флоу первого запуска (см. BackupSetupController) — ищет
+     * подпапку "TrailBack" внутри ВЫБРАННОЙ пользователем родительской папки
+     * (обычно корень внутренней памяти). НЕ создаёт — только проверяет.
+     * null, если такой подпапки нет (тогда вызывающий код должен спросить
+     * разрешения на создание, см. createTrailBackFolder) или родительская
+     * папка нечитаема.
+     *
+     * ИЗМЕНЕНО (предрелизный аудит, "тяжёлые операции на Main Thread"):
+     * раньше была обычной fun и вызывалась из lifecycleScope.launch {} на
+     * Main-диспатчере — а DocumentFile.findFile() внутри перебирает
+     * listFiles(), то есть синхронный IPC-запрос к провайдеру документов,
+     * на корне внутренней памяти с тысячами записей это заметная пауза на
+     * UI-потоке. Теперь suspend с явным уходом на Dispatchers.IO — тот же
+     * приём, что уже применён в backupNow()/restoreIfPresent() ниже.
      */
-    fun findTrailBackFolder(parentTreeUri: Uri): DocumentFile? {
-        val parent = DocumentFile.fromTreeUri(context, parentTreeUri) ?: return null
-        return parent.findFile(TRAILBACK_DIR_NAME)?.takeIf { it.isDirectory }
+    suspend fun findTrailBackFolder(parentTreeUri: Uri): DocumentFile? = withContext(Dispatchers.IO) {
+        val parent = DocumentFile.fromTreeUri(context, parentTreeUri) ?: return@withContext null
+        parent.findFile(TRAILBACK_DIR_NAME)?.takeIf { it.isDirectory }
     }
     /**
      * Создаёт подпапку "TrailBack" внутри выбранной родительской папки —
      * вызывается ТОЛЬКО после явного подтверждения пользователем в диалоге
      * "Создать каталог для хранения маршрутов и отмеченных мест?" (см.
-     * MapActivity). null при ошибке SAF (например, нет прав на запись в
-     * выбранную папку).
+     * BackupSetupController). null при ошибке SAF (например, нет прав на
+     * запись в выбранную папку). suspend + Dispatchers.IO по той же причине,
+     * что и findTrailBackFolder выше (createDirectory — тоже IPC).
      */
-    fun createTrailBackFolder(parentTreeUri: Uri): DocumentFile? {
-        val parent = DocumentFile.fromTreeUri(context, parentTreeUri) ?: return null
-        return parent.createDirectory(TRAILBACK_DIR_NAME)
+    suspend fun createTrailBackFolder(parentTreeUri: Uri): DocumentFile? = withContext(Dispatchers.IO) {
+        val parent = DocumentFile.fromTreeUri(context, parentTreeUri) ?: return@withContext null
+        parent.createDirectory(TRAILBACK_DIR_NAME)
+    }
+    /**
+     * НОВОЕ: принимает уже найденную/созданную папку как ПАПКУ БЭКАПА —
+     * сохраняет её URI в настройках, тихо восстанавливает данные, если файл
+     * бэкапа там уже лежит (restoreIfPresent — для только что созданной
+     * пустой папки это мгновенный no-op), и сразу пишет свежий бэкап.
+     * Раньше эти три шага были размазаны по двум веткам в MapActivity
+     * (почти одинаковые, но "найдена" делала restore, а "создана" — нет);
+     * теперь единственное место, где решается, что значит "принять папку".
+     */
+    suspend fun adoptFolder(folderUri: Uri) {
+        settingsStore.backupFolderUri = folderUri.toString()
+        restoreIfPresent()
+        backupNow()
     }
 
     /**

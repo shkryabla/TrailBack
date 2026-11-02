@@ -20,7 +20,7 @@ class SettingsStore(context: Context) {
     /** НОВОЕ: путь (URI) к папке "TrailBack" с бэкапом — независим от
      * offlineMapsUri выше (см. решение по ТЗ: бэкап и карты больше не
      * зависят от одного каталога). Выбирается один раз при первом запуске,
-     * см. MapActivity.setupBackupFolderIfNeeded. Пусто — ещё не выбрана. */
+     * см. BackupSetupController.startIfNeeded. Пусто — ещё не выбрана. */
     var backupFolderUri: String?
         get() = prefs.getString(KEY_BACKUP_FOLDER_URI, null)
         set(value) = prefs.edit { putString(KEY_BACKUP_FOLDER_URI, value) }

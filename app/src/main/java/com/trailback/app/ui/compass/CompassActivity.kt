@@ -25,15 +25,12 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.trailback.app.TrailBackApp
 import com.trailback.app.data.db.EntryPoint
-import com.trailback.app.data.repository.NorthMode
 import com.trailback.app.data.repository.TrackingMode
 import com.trailback.app.databinding.ActivityCompassBinding
 import com.trailback.app.service.TrackingService
 import com.trailback.app.ui.common.InfoPanelController
 import kotlinx.coroutines.launch
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
+
 class CompassActivity : KeepScreenOnActivity() {
     private lateinit var binding: ActivityCompassBinding
     private lateinit var infoPanelController: InfoPanelController
@@ -83,12 +80,10 @@ class CompassActivity : KeepScreenOnActivity() {
     // heading) может заново давать скачок через 0°/360°, даже когда сам
     // курс телефона уже стабилен. Этот слой НЕ трогаем — он решает другую
     // задачу (сглаживание GPS-джиттера, а не шума датчика ориентации).
-    private var smoothedArrowSin: Float? = null
-    private var smoothedArrowCos: Float? = null
-    // Взводится при каждом onResume — на первом валидном кадре после сна/
-    // разблокировки стрелка на дом встаёт мгновенно, без "доплывания" из
-    // замороженной за время паузы позиции.
-    private var isFirstArrowFrame = true
+    // ИЗМЕНЕНО (предрелизный аудит): три поля (smoothedArrowSin/Cos,
+    // isFirstArrowFrame) заменены на один объект — см. ArrowAngleSmoother,
+    // та же математика, но вынесена в отдельный тестируемый класс.
+    private val arrowSmoother = ArrowAngleSmoother()
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             val service = (binder as TrackingService.LocalBinder).getService()
@@ -222,7 +217,7 @@ class CompassActivity : KeepScreenOnActivity() {
         app.compassSensorManager.acquire()
         infoPanelController.start()
         startForegroundOnlyLocationUpdates()
-        isFirstArrowFrame = true // холодный старт стрелки на дом
+        arrowSmoother.reset() // холодный старт стрелки на дом
         // Страховка: пересчитываем склонение по последней известной позиции
         // сразу при возобновлении, не дожидаясь следующего GPS-тика.
         lastLocation?.let { app.compassSensorManager.updateLocationForDeclination(it) }
@@ -280,9 +275,7 @@ class CompassActivity : KeepScreenOnActivity() {
         headingObserverJob = null
         infoPanelController.stop()
         foregroundLocationClient.removeLocationUpdates(foregroundLocationCallback)
-        smoothedArrowSin = null
-        smoothedArrowCos = null
-        isFirstArrowFrame = true // сброс флага вместе с очисткой фильтра
+        arrowSmoother.reset()
         super.onPause()
     }
     /**
@@ -291,8 +284,8 @@ class CompassActivity : KeepScreenOnActivity() {
      * то есть при каждом onStart() (в т.ч. после сворачивания приложения).
      * Без отмены старой корутины на каждый цикл сворачивания/разворачивания
      * накапливалась ещё одна параллельная подписка на тот же поток
-     * геопозиции — несколько корутин одновременно писали в общие поля
-     * сглаживания (smoothedArrowSin/Cos), что и приводило к странному,
+     * геопозиции — несколько корутин одновременно писали в общее состояние
+     * сглаживания (см. ArrowAngleSmoother), что и приводило к странному,
      * трудновоспроизводимому поведению стрелки после сворачивания.
      */
     private fun observeLocation(service: TrackingService) {
@@ -339,42 +332,21 @@ class CompassActivity : KeepScreenOnActivity() {
         // битых location-фиксах (нередко сразу после выхода из сна) — не
         // пускаем такие значения в фильтр, иначе он замерзает навсегда.
         if (trueBearing.isNaN() || currentHeadingDegrees.isNaN()) return
-        // Location.bearingTo() всегда относительно истинного севера. Если
-        // циферблат сейчас в режиме "магнитный север", приводим азимут к той
-        // же системе отсчёта — иначе стрелка и циферблат рассинхронизированы
-        // на величину магнитного склонения.
         val app = application as TrailBackApp
-        val adjustedBearing = if (app.settingsStore.northMode == NorthMode.MAGNETIC) {
-            trueBearing - app.compassSensorManager.currentDeclination
-        } else {
-            trueBearing
-        }
-        if (adjustedBearing.isNaN()) return
-        val bearingDeg = AzimuthNormalizer.normalize(adjustedBearing)
-        val rawArrowAngleDeg = AzimuthNormalizer.normalize(bearingDeg - currentHeadingDegrees)
-        val rawArrowAngleRad = Math.toRadians(rawArrowAngleDeg.toDouble())
-        val rawSin = sin(rawArrowAngleRad).toFloat()
-        val rawCos = cos(rawArrowAngleRad).toFloat()
-        if (rawSin.isNaN() || rawCos.isNaN()) return
-        val previousSin = smoothedArrowSin
-        val previousCos = smoothedArrowCos
-        val newSin: Float
-        val newCos: Float
-        if (isFirstArrowFrame || previousSin == null || previousCos == null) {
-            // Холодный старт — мгновенная установка без сглаживания.
-            newSin = rawSin
-            newCos = rawCos
-            isFirstArrowFrame = false
-        } else {
-            newSin = EMA_OLD_WEIGHT * previousSin + EMA_NEW_WEIGHT * rawSin
-            newCos = EMA_OLD_WEIGHT * previousCos + EMA_NEW_WEIGHT * rawCos
-        }
-        smoothedArrowSin = newSin
-        smoothedArrowCos = newCos
-        val smoothedArrowRad = atan2(newSin, newCos)
-        var smoothedArrowDeg = Math.toDegrees(smoothedArrowRad.toDouble()).toFloat()
-        smoothedArrowDeg = AzimuthNormalizer.normalize(smoothedArrowDeg)
-        binding.compassView.arrowScreenAngleDegrees = smoothedArrowDeg
+        // ИЗМЕНЕНО (предрелизный аудит): расчёт поправки на магнитное
+        // склонение + нормализация вынесены в ArrowBearingCalculator — здесь
+        // остаётся только вызов и NaN-guard на результате.
+        val rawArrowAngleDeg = ArrowBearingCalculator.computeArrowAngle(
+            trueBearingDegrees = trueBearing,
+            northMode = app.settingsStore.northMode,
+            declinationDegrees = app.compassSensorManager.currentDeclination,
+            headingDegrees = currentHeadingDegrees
+        )
+        // ИЗМЕНЕНО: сам EMA-расчёт (sin/cos, холодный старт, нормализация)
+        // вынесен в ArrowAngleSmoother — здесь остаётся только NaN-guard
+        // перед вызовом.
+        if (rawArrowAngleDeg.isNaN()) return
+        binding.compassView.arrowScreenAngleDegrees = arrowSmoother.smooth(rawArrowAngleDeg)
     }
     private fun entryPointToLocation(entryPoint: EntryPoint): Location =
         Location("home").apply {
@@ -382,10 +354,9 @@ class CompassActivity : KeepScreenOnActivity() {
             longitude = entryPoint.longitude
         }
     companion object {
-        // Веса EMA только для второго слоя (стрелка на точку старта) —
-        // курс устройства теперь берётся из CompassSensorManager без фильтра.
-        private const val EMA_OLD_WEIGHT = 0.92f
-        private const val EMA_NEW_WEIGHT = 0.08f
+        // ИЗМЕНЕНО (предрелизный аудит): веса EMA для стрелки переехали в
+        // ArrowAngleSmoother.DEFAULT_OLD_WEIGHT/DEFAULT_NEW_WEIGHT — здесь
+        // константы больше не нужны.
         // НОВОЕ: цвет стрелки "взятия направления" — фиолетовый, отличается
         // от оранжевого "Домой", чтобы пользователь не перепутал цели.
         private const val DIRECTION_ARROW_COLOR = 0xFF9C27B0.toInt()

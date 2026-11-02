@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.trailback.app.ui.common.KeepScreenOnActivity
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.DiffUtil
@@ -27,8 +28,16 @@ import com.trailback.app.databinding.ActivityEntryPointsBinding
 import com.trailback.app.databinding.ItemMenuRowBinding
 import com.trailback.app.service.TrackingService
 import kotlinx.coroutines.launch
+
+/**
+ * ИЗМЕНЕНО (предрелизный аудит): доступ к TrackingRepository вынесен в
+ * EntryPointsViewModel — Activity теперь отвечает только за UI (диалоги,
+ * список) и за байндинг к TrackingService (системная Android-подписка,
+ * осознанно оставлена здесь — см. комментарий в EntryPointsViewModel).
+ */
 class EntryPointsActivity : KeepScreenOnActivity() {
     private lateinit var binding: ActivityEntryPointsBinding
+    private lateinit var viewModel: EntryPointsViewModel
     private var trackingService: TrackingService? = null
     private var isServiceBound = false
     private val serviceConnection = object : ServiceConnection {
@@ -44,27 +53,22 @@ class EntryPointsActivity : KeepScreenOnActivity() {
         binding = ActivityEntryPointsBinding.inflate(layoutInflater)
         setContentView(binding.root)
         val app = application as TrailBackApp
+        viewModel = ViewModelProvider(this, EntryPointsViewModel.Factory(app))[EntryPointsViewModel::class.java]
         binding.list.layoutManager = LinearLayoutManager(this)
-        // ИЗМЕНЕНО (предрелизный аудит): раньше на КАЖДУЮ эмиссию Flow
-        // создавался новый EntryPointsAdapter(points, ...) — полный relayout
-        // списка на любое изменение. Теперь — ListAdapter + DiffUtil,
-        // создаётся единожды, обновляется через submitList().
         val adapter = EntryPointsAdapter(
-            onTap = { point -> onEntryPointTapped(app, point) },
-            onLongPress = { point -> copyCoordinates(point) }
+            onTap = ::onEntryPointTapped,
+            onLongPress = ::copyCoordinates
         )
         binding.list.adapter = adapter
-        // ИЗМЕНЕНО: repeatOnLifecycle(STARTED) — не собираем Flow, пока
-        // экран не на переднем плане (см. тот же фикс в MarkedPlacesActivity).
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                app.trackingRepository.observeEntryPoints().collect { points ->
+                viewModel.entryPoints.collect { points ->
                     adapter.submitList(points)
                 }
             }
         }
         binding.clearAllButton.setOnClickListener {
-            showClearConfirmation1(app)
+            showClearConfirmation1()
         }
     }
     override fun onStart() {
@@ -92,8 +96,8 @@ class EntryPointsActivity : KeepScreenOnActivity() {
      * хранение, см. решение по ТЗ), отрисовывается уже полупрозрачным как
      * архивный (см. MapController.updateTrackLine).
      */
-    private fun onEntryPointTapped(app: TrailBackApp, point: EntryPoint) {
-        if (app.trackingStateStore.mode != TrackingMode.IDLE) {
+    private fun onEntryPointTapped(point: EntryPoint) {
+        if (viewModel.isSelectionLocked()) {
             Toast.makeText(this, R.string.select_entry_point_locked_active_mode, Toast.LENGTH_SHORT).show()
             return
         }
@@ -101,11 +105,9 @@ class EntryPointsActivity : KeepScreenOnActivity() {
             .setTitle(R.string.select_entry_point_title)
             .setMessage(point.name)
             .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                lifecycleScope.launch {
-                    app.trackingRepository.selectActiveEntryPoint(point.id)
-                    app.trackingRepository.enterReturningMode()
+                viewModel.selectEntryPoint(point.id) {
                     trackingService?.updateMode(TrackingMode.RETURNING)
-                    Toast.makeText(this@EntryPointsActivity, R.string.entry_point_set_active, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, R.string.entry_point_set_active, Toast.LENGTH_SHORT).show()
                     finish()
                 }
             }
@@ -119,32 +121,30 @@ class EntryPointsActivity : KeepScreenOnActivity() {
         Toast.makeText(this, R.string.coordinates_copied, Toast.LENGTH_SHORT).show()
     }
     /** Тройное подтверждение массовой очистки (см. п.6.3 ТЗ и решение по формулировкам). */
-    private fun showClearConfirmation1(app: TrailBackApp) {
+    private fun showClearConfirmation1() {
         AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setMessage(R.string.clear_entry_points_warning_1)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> showClearConfirmation2(app) }
+            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> showClearConfirmation2() }
             .setNegativeButton(R.string.arrived_dialog_no, null)
             .show()
     }
-    private fun showClearConfirmation2(app: TrailBackApp) {
+    private fun showClearConfirmation2() {
         AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setMessage(R.string.clear_entry_points_warning_2)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> showClearConfirmation3(app) }
+            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> showClearConfirmation3() }
             .setNegativeButton(R.string.arrived_dialog_no, null)
             .show()
     }
-    private fun showClearConfirmation3(app: TrailBackApp) {
+    private fun showClearConfirmation3() {
         AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
             .setMessage(R.string.clear_entry_points_warning_3)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                lifecycleScope.launch { app.trackingRepository.clearAllEntryPoints() }
-            }
+            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> viewModel.clearAllEntryPoints() }
             .setNegativeButton(R.string.arrived_dialog_no, null)
             .show()
     }
 }
-/** ИЗМЕНЕНО (предрелизный аудит): RecyclerView.Adapter -> ListAdapter с
- * DiffUtil.ItemCallback — см. тот же фикс в MarkedPlacesAdapter. */
+/** ListAdapter + DiffUtil — см. предрелизный аудит (раньше адаптер
+ * пересоздавался целиком на каждую эмиссию). */
 class EntryPointsAdapter(
     private val onTap: (EntryPoint) -> Unit,
     private val onLongPress: (EntryPoint) -> Unit
@@ -159,10 +159,6 @@ class EntryPointsAdapter(
         // Дата/время уже часть point.name (см. решение по ТЗ — формат
         // "Вход - сб. 05.09.26 г. 14:07"), координаты в списке не нужны.
         holder.binding.titleText.text = point.name
-        // НОВОЕ: item_menu_row.xml теперь содержит ImageView слева от текста
-        // (см. MenuAdapter) — тот же макет переиспользуется и здесь, ставим
-        // ту же иконку "флага", что и у пункта меню "Сохранённые точки
-        // входа", чтобы список не остался с пустым местом слева.
         holder.binding.iconImage.setImageResource(R.drawable.ic_flag)
         holder.binding.root.setOnClickListener { onTap(point) }
         holder.binding.root.setOnLongClickListener {
