@@ -5,16 +5,21 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.trailback.app.TrailBackApp
 import com.trailback.app.data.db.EntryPoint
+import com.trailback.app.data.db.MarkedPlace
+import com.trailback.app.data.repository.MarkedPlaceRepository
 import com.trailback.app.data.repository.TrackingMode
 import com.trailback.app.data.repository.TrackingRepository
 import com.trailback.app.data.repository.TrackingStateStore
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 class MapViewModel(
     private val repository: TrackingRepository,
-    private val stateStore: TrackingStateStore
+    private val stateStore: TrackingStateStore,
+    private val markedPlaceRepository: MarkedPlaceRepository
 ) : ViewModel() {
     private val _mode = MutableStateFlow(stateStore.mode)
     val mode: StateFlow<TrackingMode> = _mode.asStateFlow()
@@ -22,10 +27,19 @@ class MapViewModel(
     val distanceMeters: StateFlow<Float> = _distanceMeters.asStateFlow()
     private val _activeEntryPoint = MutableStateFlow<EntryPoint?>(null)
     val activeEntryPoint: StateFlow<EntryPoint?> = _activeEntryPoint.asStateFlow()
+    /** Отмеченные места для маркеров на карте. Раньше MapActivity сама
+     * подписывалась на MarkedPlaceDao напрямую. */
+    val markedPlaces: StateFlow<List<MarkedPlace>> = markedPlaceRepository.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     init {
         viewModelScope.launch {
             _activeEntryPoint.value = repository.getActiveEntryPoint()
         }
+    }
+    /** Сохранение места с карты (кнопка быстрой отметки / долгий тап).
+     * Правило "записать + обновить бэкап" — в MarkedPlaceRepository. */
+    fun addMarkedPlace(name: String, latitude: Double, longitude: Double) {
+        viewModelScope.launch { markedPlaceRepository.add(name, latitude, longitude) }
     }
     fun onStartConfirmed(location: Location) {
         viewModelScope.launch {
@@ -79,7 +93,7 @@ class MapViewModel(
     class Factory(private val app: TrailBackApp) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return MapViewModel(app.trackingRepository, app.trackingStateStore) as T
+            return MapViewModel(app.trackingRepository, app.trackingStateStore, app.markedPlaceRepository) as T
         }
     }
 }

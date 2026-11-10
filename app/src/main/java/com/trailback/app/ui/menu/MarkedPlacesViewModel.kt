@@ -3,9 +3,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.trailback.app.TrailBackApp
-import com.trailback.app.data.backup.BackupManager
 import com.trailback.app.data.db.MarkedPlace
-import com.trailback.app.data.db.MarkedPlaceDao
+import com.trailback.app.data.repository.MarkedPlaceRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -26,8 +25,7 @@ import kotlinx.coroutines.launch
  * callback'ам Activity.
  */
 class MarkedPlacesViewModel(
-    private val markedPlaceDao: MarkedPlaceDao,
-    private val backupManager: BackupManager
+    private val repository: MarkedPlaceRepository
 ) : ViewModel() {
     /**
      * stateIn(WhileSubscribed(5000)) — а не просто observeAll() напрямую —
@@ -38,7 +36,7 @@ class MarkedPlacesViewModel(
      * значение из официальных гайдов Android по StateFlow+Compose/Views,
      * не произвольная прикидка.
      */
-    val places: StateFlow<List<MarkedPlace>> = markedPlaceDao.observeAll()
+    val places: StateFlow<List<MarkedPlace>> = repository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
@@ -57,30 +55,17 @@ class MarkedPlacesViewModel(
         val coordinates = parseCoordinates(coordinatesRaw)
         if (trimmedName.isEmpty() || coordinates == null) return false
         val (latitude, longitude) = coordinates
-        viewModelScope.launch {
-            markedPlaceDao.insert(
-                MarkedPlace(
-                    name = trimmedName,
-                    latitude = latitude,
-                    longitude = longitude,
-                    timestamp = System.currentTimeMillis()
-                )
-            )
-            backupManager.backupNow()
-        }
+        viewModelScope.launch { repository.add(trimmedName, latitude, longitude) }
         return true
     }
     fun delete(place: MarkedPlace) {
-        viewModelScope.launch {
-            markedPlaceDao.delete(place)
-            backupManager.backupNow()
-        }
+        viewModelScope.launch { repository.delete(place) }
     }
 
     class Factory(private val app: TrailBackApp) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return MarkedPlacesViewModel(app.database.markedPlaceDao(), app.backupManager) as T
+            return MarkedPlacesViewModel(app.markedPlaceRepository) as T
         }
     }
     companion object {

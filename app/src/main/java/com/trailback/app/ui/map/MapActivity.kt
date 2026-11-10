@@ -11,7 +11,6 @@ import android.os.Bundle
 import android.os.IBinder
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import com.trailback.app.ui.common.KeepScreenOnActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
@@ -104,6 +103,10 @@ class MapActivity : KeepScreenOnActivity() {
      * Создаётся как свойство, т.е. ДО STARTED — того требует
      * registerForActivityResult внутри контроллера. */
     private val backupSetup = BackupSetupController(this)
+    /** Диалоги "Старт/Домой/Я на месте/Вы вернулись!" — см. TrackingDialogs. */
+    private val trackingDialogs = TrackingDialogs(this)
+    /** Диалоги сохранения места и долгого тапа — см. PlaceDialogs. */
+    private val placeDialogs = PlaceDialogs(this)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMapBinding.inflate(layoutInflater)
@@ -367,21 +370,16 @@ class MapActivity : KeepScreenOnActivity() {
         }
     }
     private fun showRecoveryDialog(app: TrailBackApp) {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.recovery_dialog_title)
-            .setMessage(R.string.recovery_dialog_message)
-            .setCancelable(false)
-            .setPositiveButton(R.string.recovery_dialog_continue) { _, _ ->
-                ensurePermissionsAndStartService()
-            }
-            .setNegativeButton(R.string.recovery_dialog_cancel) { _, _ ->
+        trackingDialogs.showRecovery(
+            onContinue = ::ensurePermissionsAndStartService,
+            onCancel = {
                 lifecycleScope.launch {
                     app.trackingRepository.cancelRecovery()
                     viewModel.resetToIdleState()
                     ensurePermissionsAndStartService()
                 }
             }
-            .show()
+        )
     }
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {
         val manager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
@@ -397,9 +395,9 @@ class MapActivity : KeepScreenOnActivity() {
         }
         binding.mainActionButton.setOnClickListener {
             when (viewModel.mode.value) {
-                TrackingMode.IDLE -> confirmStart()
-                TrackingMode.RECORDING -> confirmHome()
-                TrackingMode.RETURNING -> confirmManualArrival()
+                TrackingMode.IDLE -> trackingDialogs.confirmStart(isLowAccuracy(), ::onStartConfirmed)
+                TrackingMode.RECORDING -> trackingDialogs.confirmHome(::onHomeConfirmed)
+                TrackingMode.RETURNING -> trackingDialogs.confirmManualArrival(::onArrivalConfirmed)
             }
         }
         binding.quickMarkButton.setOnClickListener {
@@ -411,156 +409,61 @@ class MapActivity : KeepScreenOnActivity() {
             confirmCancelNavigationTarget()
         }
     }
-    private fun confirmStart() {
+    // ИЗМЕНЕНО (предрелизный аудит): шесть диалоговых функций основного
+    // сценария (confirmStart/showStartConfirmDialog/confirmHome/
+    // confirmManualArrival/confirmManualArrivalReset/showArrivedDialog)
+    // вынесены в TrackingDialogs — здесь остались только ДЕЙСТВИЯ после
+    // подтверждения. Заодно устранён дубль: "прибытие подтверждено" раньше
+    // было написано дважды (в ручном и в автоматическом диалоге) —
+    // теперь одна onArrivalConfirmed().
+    private fun isLowAccuracy(): Boolean {
         val location = lastKnownLocation
-        if (location != null && location.accuracy > LOW_ACCURACY_THRESHOLD_METERS) {
-            AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-                .setMessage(R.string.low_accuracy_warning)
-                .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> showStartConfirmDialog() }
-                .setNegativeButton(R.string.arrived_dialog_no, null)
-                .show()
-        } else {
-            showStartConfirmDialog()
+        return location != null && location.accuracy > LOW_ACCURACY_THRESHOLD_METERS
+    }
+    private fun onStartConfirmed() {
+        // lastKnownLocation читается в момент подтверждения, а не открытия
+        // диалога — за время ответа пользователя фикс мог обновиться.
+        lastKnownLocation?.let {
+            viewModel.onStartConfirmed(it)
+            trackingService?.updateMode(TrackingMode.RECORDING)
         }
     }
-    private fun showStartConfirmDialog() {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.confirm_start_title)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                lastKnownLocation?.let {
-                    viewModel.onStartConfirmed(it)
-                    trackingService?.updateMode(TrackingMode.RECORDING)
-                }
-            }
-            .setNegativeButton(R.string.arrived_dialog_no, null)
-            .show()
+    private fun onHomeConfirmed() {
+        viewModel.onHomeConfirmed()
+        trackingService?.updateMode(TrackingMode.RETURNING)
     }
-    private fun confirmHome() {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.confirm_home_title)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                viewModel.onHomeConfirmed()
-                trackingService?.updateMode(TrackingMode.RETURNING)
-            }
-            .setNegativeButton(R.string.arrived_dialog_no, null)
-            .show()
+    private fun onArrivalConfirmed() {
+        viewModel.onArrivedConfirmed()
+        trackingService?.onArrivalDialogDismissed(confirmed = true)
+        trackingService?.updateMode(TrackingMode.IDLE)
     }
-    /**
-     * Ручное подтверждение через объединённую кнопку (п.3): два РАЗНЫХ
-     * диалога подряд, а не троекратное повторение одного и того же — сперва
-     * обычное подтверждение прибытия, затем отдельное предупреждение о
-     * сбросе режима возврата (п.4).
-     */
-    private fun confirmManualArrival() {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.arrived_dialog_title)
-            .setMessage(R.string.arrived_dialog_message)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> confirmManualArrivalReset() }
-            .setNegativeButton(R.string.arrived_dialog_no, null)
-            .show()
-    }
-    private fun confirmManualArrivalReset() {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setMessage(R.string.manual_arrival_reset_confirm_message)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                viewModel.onArrivedConfirmed()
-                trackingService?.onArrivalDialogDismissed(confirmed = true)
-                trackingService?.updateMode(TrackingMode.IDLE)
-            }
-            .setNegativeButton(R.string.arrived_dialog_no, null)
-            .show()
+    private fun onArrivalDeclined() {
+        trackingService?.onArrivalDialogDismissed(confirmed = false)
     }
     private fun showArrivedDialog() {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.arrived_dialog_title)
-            .setMessage(R.string.arrived_dialog_message)
-            .setCancelable(false)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                viewModel.onArrivedConfirmed()
-                trackingService?.onArrivalDialogDismissed(confirmed = true)
-                trackingService?.updateMode(TrackingMode.IDLE)
-            }
-            .setNegativeButton(R.string.arrived_dialog_no) { _, _ ->
-                trackingService?.onArrivalDialogDismissed(confirmed = false)
-            }
-            .show()
+        trackingDialogs.showArrived(::onArrivalConfirmed, ::onArrivalDeclined)
     }
+    // ИЗМЕНЕНО (предрелизный аудит): два почти одинаковых диалога ввода
+    // названия (для текущей геопозиции и для точки долгого тапа) заменены
+    // одним PlaceDialogs.askPlaceName(); запись места и бэкап — в
+    // MarkedPlaceRepository через MapViewModel.addMarkedPlace(), Activity
+    // больше не ходит в MarkedPlaceDao и BackupManager напрямую.
     private fun showMarkPlaceDialog() {
-        val input = androidx.appcompat.widget.AppCompatEditText(this).apply {
-            hint = getString(R.string.mark_place_hint)
+        placeDialogs.askPlaceName { name ->
+            // Геопозиция читается в момент подтверждения, а не открытия диалога.
+            lastKnownLocation?.let { viewModel.addMarkedPlace(name, it.latitude, it.longitude) }
         }
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.mark_place_dialog_title)
-            .setView(input)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                val name = input.text?.toString()?.trim().orEmpty()
-                val location = lastKnownLocation
-                if (name.isNotEmpty() && location != null) {
-                    val app = application as TrailBackApp
-                    lifecycleScope.launch {
-                        app.database.markedPlaceDao().insert(
-                            com.trailback.app.data.db.MarkedPlace(
-                                name = name,
-                                latitude = location.latitude,
-                                longitude = location.longitude,
-                                timestamp = System.currentTimeMillis()
-                            )
-                        )
-                        app.backupManager.backupNow()
-                    }
-                }
-            }
-            .setNegativeButton(R.string.arrived_dialog_no, null)
-            .show()
     }
-    // === НОВОЕ: "взятие направления" (долгий тап на карте) ===
+    // === "взятие направления" (долгий тап на карте) ===
     /** Точка входа в фичу — вызывается из mapController.onLongPress. Работает
-     * в любом TrackingMode (см. решение по ТЗ), диалог не завязан на режим. */
+     * в любом TrackingMode, диалог не завязан на режим. */
     private fun showLongPressActionDialog(latitude: Double, longitude: Double) {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.long_press_dialog_title)
-            .setItems(
-                arrayOf(
-                    getString(R.string.long_press_save_place),
-                    getString(R.string.long_press_take_direction)
-                )
-            ) { _, which ->
-                when (which) {
-                    0 -> showSavePlaceAtDialog(latitude, longitude)
-                    1 -> takeDirectionTo(latitude, longitude)
-                }
-            }
-            .setNegativeButton(R.string.arrived_dialog_no, null)
-            .show()
-    }
-    /** Тот же флоу, что и showMarkPlaceDialog(), но координаты берутся из
-     * места долгого тапа, а не из текущей геопозиции пользователя. */
-    private fun showSavePlaceAtDialog(latitude: Double, longitude: Double) {
-        val input = androidx.appcompat.widget.AppCompatEditText(this).apply {
-            hint = getString(R.string.mark_place_hint)
-        }
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.mark_place_dialog_title)
-            .setView(input)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
-                val name = input.text?.toString()?.trim().orEmpty()
-                if (name.isNotEmpty()) {
-                    val app = application as TrailBackApp
-                    lifecycleScope.launch {
-                        app.database.markedPlaceDao().insert(
-                            com.trailback.app.data.db.MarkedPlace(
-                                name = name,
-                                latitude = latitude,
-                                longitude = longitude,
-                                timestamp = System.currentTimeMillis()
-                            )
-                        )
-                        app.backupManager.backupNow()
-                    }
-                }
-            }
-            .setNegativeButton(R.string.arrived_dialog_no, null)
-            .show()
+        placeDialogs.showLongPressActions(
+            onSavePlace = {
+                placeDialogs.askPlaceName { name -> viewModel.addMarkedPlace(name, latitude, longitude) }
+            },
+            onTakeDirection = { takeDirectionTo(latitude, longitude) }
+        )
     }
     /** Активирует "взятие направления": сохраняет цель, будит GPS-опрос в
      * сервисе (важно, если сейчас IDLE), обновляет UI (кнопка/маркер/линия).
@@ -576,28 +479,19 @@ class MapActivity : KeepScreenOnActivity() {
     }
     /** Ручная отмена через кнопку слева от главной. */
     private fun confirmCancelNavigationTarget() {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setMessage(R.string.cancel_direction_confirm_message)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ -> clearNavigationTarget() }
-            .setNegativeButton(R.string.arrived_dialog_no, null)
-            .show()
+        trackingDialogs.confirmCancelDirection(::clearNavigationTarget)
     }
     /** Автоматический диалог прибытия — та же логика (радиус + серия фиксов
-     * + точность), что и "Вы вернулись!" в режиме "Домой" (см. решение по ТЗ,
-     * HomeArrivalDetector переиспользуется в TrackingService как есть). */
+     * + точность), что и "Вы вернулись!" в режиме "Домой" (HomeArrivalDetector
+     * переиспользуется в TrackingService как есть). */
     private fun showDirectionArrivedDialog() {
-        AlertDialog.Builder(this, R.style.TrailBackAlertDialogTheme)
-            .setTitle(R.string.direction_arrived_dialog_title)
-            .setMessage(R.string.direction_arrived_dialog_message)
-            .setCancelable(false)
-            .setPositiveButton(R.string.arrived_dialog_yes) { _, _ ->
+        trackingDialogs.showDirectionArrived(
+            onConfirmed = {
                 trackingService?.onDirectionArrivalDialogDismissed(confirmed = true)
                 clearNavigationTarget()
-            }
-            .setNegativeButton(R.string.arrived_dialog_no) { _, _ ->
-                trackingService?.onDirectionArrivalDialogDismissed(confirmed = false)
-            }
-            .show()
+            },
+            onDeclined = { trackingService?.onDirectionArrivalDialogDismissed(confirmed = false) }
+        )
     }
     private fun clearNavigationTarget() {
         val app = application as TrailBackApp
@@ -691,8 +585,7 @@ class MapActivity : KeepScreenOnActivity() {
                 }
         }
         lifecycleScope.launch {
-            val app = application as TrailBackApp
-            app.database.markedPlaceDao().observeAll().collect { places ->
+            viewModel.markedPlaces.collect { places ->
                 mapController.updateMarkedPlaces(places)
             }
         }

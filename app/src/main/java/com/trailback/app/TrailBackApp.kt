@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Bundle
 import com.trailback.app.data.backup.BackupManager
 import com.trailback.app.data.db.AppDatabase
+import com.trailback.app.data.repository.MarkedPlaceRepository
 import com.trailback.app.data.repository.SettingsStore
 import com.trailback.app.data.repository.TrackingRepository
 import com.trailback.app.data.repository.TrackingStateStore
@@ -29,6 +30,10 @@ class TrailBackApp : Application() {
     // папку офлайн-карт (см. BackupManager) — данные должны пережить
     // удаление приложения, а внутреннее хранилище Room этого не переживает.
     lateinit var backupManager: BackupManager
+        private set
+    // НОВОЕ (предрелизный аудит): единая точка записи/удаления отмеченных
+    // мест + обновления бэкапа — см. MarkedPlaceRepository.
+    lateinit var markedPlaceRepository: MarkedPlaceRepository
         private set
     // НОВОЕ: единый на всё приложение экземпляр — раньше каждая Activity
     // (CompassActivity, MapActivity) создавала свой собственный, из-за чего
@@ -76,6 +81,10 @@ class TrailBackApp : Application() {
             markedPlaceDao = database.markedPlaceDao(),
             trackPointDao = database.trackPointDao(),
             settingsStore = settingsStore
+        )
+        markedPlaceRepository = MarkedPlaceRepository(
+            markedPlaceDao = database.markedPlaceDao(),
+            backupManager = backupManager
         )
         compassSensorManager = CompassSensorManager(this).apply {
             northMode = settingsStore.northMode

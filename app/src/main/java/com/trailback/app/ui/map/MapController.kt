@@ -54,6 +54,9 @@ class MapController(
     // null = копирование сейчас не идёт (и заглушка без текста прогресса,
     // и обычная работающая карта дают null). MapActivity подписывается на
     // этот поток и показывает/прячет текстовую надпись поверх карты.
+    // Номер последнего вызова setupMap(). Вызовы приходят с Main, но проверяется
+    // он и с IO-потока (копирование) — отсюда @Volatile.
+    @Volatile private var setupGeneration = 0
     private val _mapLoadProgress = MutableStateFlow<Int?>(null)
     val mapLoadProgress: StateFlow<Int?> = _mapLoadProgress.asStateFlow()
     private var trackPolyline: Polyline? = null
@@ -76,6 +79,14 @@ class MapController(
      * MapActivity сам решает, что показать (диалог выбора действия). */
     var onLongPress: ((screenX: Float, screenY: Float) -> Unit)? = null
     private val markedPlaceMarkers = mutableListOf<Marker>()
+    // Кэш последних данных оверлеев: потоки из БД эмитят только на изменение,
+    // поэтому после пересоздания MapView (смена карты) слои нужно перерисовать
+    // из кэша, а не ждать следующей эмиссии. teardownMap() кэш НЕ очищает.
+    private var lastTrackPoints: List<TrackPoint> = emptyList()
+    private var lastTrackMode: TrackingMode = TrackingMode.IDLE
+    private var lastEntryPoint: EntryPoint? = null
+    private var lastMarkedPlaces: List<MarkedPlace> = emptyList()
+    private var lastNavigationTarget: Pair<Double, Double>? = null
     private val density = context.resources.displayMetrics.density
     private val markerSizePx: Int = (MARKER_SIZE_DP * density).toInt()
     /**
@@ -105,55 +116,80 @@ class MapController(
      * заглушка показывается сразу — пользователь не видит зависания.
      */
     suspend fun setupMap(offlineMapsUri: String?) {
-        // Уничтожаем предыдущий MapView (если это переинициализация после смены
-        // офлайн-карты в настройках, см. решение по ТЗ — раньше карта менялась
-        // только после полного перезапуска приложения) и сбрасываем ссылки на
-        // маркеры/линии, привязанные к старому (уже уничтоженному) MapView —
-        // иначе updateTrackLine/updateHomeLine/updateUserPosition будут
-        // молча падать на несуществующие layers старой карты.
-        tileRendererLayer?.let { it.mapDataStore.close() }
-        mapView?.destroyAll()
-        mapView = null
-        tileRendererLayer = null
-        trackPolyline = null
-        homeLinePolyline = null
-        userMarkerLayer?.destroy()
-        userMarkerLayer = null
-        scaleGridLayer = null
-        accuracyCircle = null
-        entryPointMarker = null
-        navigationTargetMarker = null // НОВОЕ
-        navigationTargetLine = null // НОВОЕ
-        markedPlaceMarkers.clear()
-        followModeEnabled = true
-        container.removeAllViews()
+        // Устаревшие вызовы (смена папки карт во время копирования) сами
+        // отбрасывают свой результат: проверка generation != setupGeneration.
+        val generation = ++setupGeneration
+        // Переинициализация после смены офлайн-карты в настройках: уничтожаем
+        // предыдущий MapView и сбрасываем все ссылки на слои, привязанные к нему.
+        teardownMap()
         if (offlineMapsUri != null) {
             // Показываем рабочий MapView без тайлов сразу — пока в фоне
             // может идти копирование большого файла карты, пользователь не
             // видит зависший экран, и курсор/зум уже доступны.
-            // НОВОЕ: заглушка теперь дополняется текстом прогресса
-            // (см. mapLoadProgress) — раньше был голый серый прямоугольник
-            // без обратной связи, при 600+ МБ файле выглядело как зависание.
+            // Заглушка дополняется текстом прогресса (см. mapLoadProgress).
             showEmptyMap()
             _mapLoadProgress.value = 0
             val mapFile = try {
                 withContext(Dispatchers.IO) {
-                    resolveFirstMapFile(offlineMapsUri) { percent -> _mapLoadProgress.value = percent }
+                    resolveFirstMapFile(
+                        treeUriString = offlineMapsUri,
+                        isStale = { generation != setupGeneration },
+                        onProgress = { percent ->
+                            if (generation == setupGeneration) _mapLoadProgress.value = percent
+                        }
+                    )
                 }
             } finally {
-                _mapLoadProgress.value = null
+                // Не гасим прогресс, если им уже владеет более новый вызов
+                if (generation == setupGeneration) _mapLoadProgress.value = null
             }
+            // Пока копировали, запущен более новый setupMap — экраном владеет он
+            if (generation != setupGeneration) return
             if (mapFile != null) {
-                container.removeAllViews()
+                // ИСПРАВЛЕНО: раньше заглушка перезаписывалась без destroyAll() —
+                // утекали поток слоёв Mapsforge, буферы и битмап маркера.
+                teardownMap()
                 showOfflineMap(mapFile)
-                return
             }
-            // Офлайн-карта не найдена/не читается — только карта без тайлов
-            // (онлайн-фолбэка больше нет, см. решение по ТЗ — приложение
-            // строго офлайн).
-            container.removeAllViews()
+            // Офлайн-карта не найдена/не читается — заглушка уже на экране,
+            // второй раз её не пересоздаём (приложение строго офлайн).
+            return
         }
         showEmptyMap()
+    }
+    /**
+     * Единственное место уничтожения MapView и всего, что к нему привязано.
+     * Порядок важен: сначала destroyAll() (останавливает поток отрисовки
+     * слоёв), и только затем destroy() слоя маркера, который recycle()-ит
+     * битмап — иначе поток отрисовки может обратиться к освобождённому Bitmap.
+     */
+    /** Перерисовывает оверлеи из кэша на только что созданном MapView.
+     * Порядок слоёв тот же, что и при живых обновлениях (после слоя маркера
+     * пользователя). Линии "Домой"/направления и позиция восстановятся на
+     * ближайшем GPS-фиксе — они зависят от текущей геопозиции. */
+    private fun reapplyOverlays() {
+        updateTrackLine(lastTrackPoints, lastTrackMode)
+        updateEntryPointMarker(lastEntryPoint)
+        updateMarkedPlaces(lastMarkedPlaces)
+        updateNavigationTargetMarker(lastNavigationTarget)
+    }
+    private fun teardownMap() {
+        tileRendererLayer?.mapDataStore?.close()
+        mapView?.destroyAll()
+        userMarkerLayer?.destroy()
+        container.removeAllViews()
+        mapView = null
+        tileRendererLayer = null
+        trackPolyline = null
+        homeLinePolyline = null
+        userMarkerLayer = null
+        scaleGridLayer = null
+        accuracyCircle = null
+        entryPointMarker = null
+        navigationTargetMarker = null
+        navigationTargetLine = null
+        markedPlaceMarkers.clear()
+        followModeEnabled = true
     }
     /**
      * Выполняется на Dispatchers.IO (см. вызывающий код). Пропускает
@@ -170,7 +206,11 @@ class MapController(
      * cacheFile.exists() ниже) — onProgress не вызывается вовсе, экран
      * сразу переходит к showOfflineMap.
      */
-    private fun resolveFirstMapFile(treeUriString: String, onProgress: (Int) -> Unit): File? {
+    private fun resolveFirstMapFile(
+        treeUriString: String,
+        isStale: () -> Boolean,
+        onProgress: (Int) -> Unit
+    ): File? {
         return try {
             val treeUri = Uri.parse(treeUriString)
             val documentFile = DocumentFile.fromTreeUri(context, treeUri) ?: return null
@@ -183,21 +223,34 @@ class MapController(
             val totalBytes = mapDoc.length().coerceAtLeast(1L)
             var copiedBytes = 0L
             var lastReportedPercent = -1
-            context.contentResolver.openInputStream(mapDoc.uri)?.use { input ->
-                cacheFile.outputStream().use { output ->
-                    val buffer = ByteArray(COPY_BUFFER_SIZE_BYTES)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        output.write(buffer, 0, read)
-                        copiedBytes += read
-                        val percent = ((copiedBytes * 100) / totalBytes).toInt().coerceIn(0, 100)
-                        if (percent != lastReportedPercent) {
-                            lastReportedPercent = percent
-                            onProgress(percent)
+            // Копируем во ВРЕМЕННЫЙ файл и переименовываем по завершении: два
+            // параллельных вызова (устаревший и новый) не пишут в один файл, а
+            // оборванное копирование не оставляет в кэше файл-обрубок.
+            val tmpFile = File.createTempFile("map_", ".part", context.cacheDir)
+            var completed = false
+            try {
+                val input = context.contentResolver.openInputStream(mapDoc.uri) ?: return null
+                input.use {
+                    tmpFile.outputStream().use { output ->
+                        val buffer = ByteArray(COPY_BUFFER_SIZE_BYTES)
+                        while (true) {
+                            if (isStale()) return null // finally удалит временный файл
+                            val read = it.read(buffer)
+                            if (read == -1) break
+                            output.write(buffer, 0, read)
+                            copiedBytes += read
+                            val percent = ((copiedBytes * 100) / totalBytes).toInt().coerceIn(0, 100)
+                            if (percent != lastReportedPercent) {
+                                lastReportedPercent = percent
+                                onProgress(percent)
+                            }
                         }
                     }
                 }
+                if (isStale() || !tmpFile.renameTo(cacheFile)) return null
+                completed = true
+            } finally {
+                if (!completed) tmpFile.delete()
             }
             cacheFile
         } catch (e: Exception) {
@@ -243,6 +296,7 @@ class MapController(
         container.addView(newMapView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
         ))
+        reapplyOverlays()
     }
     /**
      * Создаёт и добавляет RotatingUserMarkerLayer в новый MapView — вынесено
@@ -337,6 +391,7 @@ class MapController(
         container.addView(newMapView, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
         ))
+        reapplyOverlays()
     }
     /**
      * Чёрная линия трека толщиной 4dp.
@@ -363,6 +418,8 @@ class MapController(
      * передать координаты в обычный Polyline. Сам Mapsforge не тронут.
      */
     fun updateTrackLine(points: List<TrackPoint>, mode: TrackingMode) {
+        lastTrackPoints = points
+        lastTrackMode = mode
         val mapView = this.mapView ?: return
         trackPolyline?.let { mapView.layerManager.layers.remove(it) }
         if (mode == TrackingMode.IDLE || points.size < 2) return
@@ -550,13 +607,18 @@ class MapController(
     }
     /** Булавка с подписью названия сверху для каждого отмеченного места. */
     fun updateMarkedPlaces(places: List<MarkedPlace>) {
+        lastMarkedPlaces = places
         val mapView = this.mapView ?: return
-        markedPlaceMarkers.forEach { mapView.layerManager.layers.remove(it) }
+        // Layers.remove() только отвязывает слой и НЕ зовёт onDestroy() —
+        // освобождаем битмап явно (см. комментарий у refCount ниже).
+        markedPlaceMarkers.forEach { mapView.layerManager.layers.remove(it); it.onDestroy() }
         markedPlaceMarkers.clear()
         val pinSizePx = (36 * density).toInt()
         places.forEach { place ->
             val bitmap = createLabeledIconBitmap(R.drawable.ic_marked_place_pin, pinSizePx, place.name)
-            bitmap.incrementRefCount()
+            // refCount свежего битмапа = 0 = один владелец (Marker); onDestroy() маркера
+            // делает decrement -> -1 -> битмап уходит в пул переиспользования Mapsforge.
+            // Ручной incrementRefCount() сюда НЕ нужен (он нужен только при общем битмапе).
             // Вертикальный офсет: острие булавки должно "стоять" на координате,
             // а не центр всего составного битмапа (текст+булавка) — сдвигаем
             // вверх на половину общей высоты композиции.
@@ -572,14 +634,17 @@ class MapController(
      * (например "27.авг. 7:40") — см. решение по ТЗ.
      */
     fun updateEntryPointMarker(entryPoint: EntryPoint?) {
+        lastEntryPoint = entryPoint
         val mapView = this.mapView ?: return
-        entryPointMarker?.let { mapView.layerManager.layers.remove(it) }
+        entryPointMarker?.let { mapView.layerManager.layers.remove(it); it.onDestroy() }
         entryPointMarker = null
         if (entryPoint == null) return
         val dateLabel = entryPointDateFormat.format(java.util.Date(entryPoint.timestamp))
         val crossSizePx = (32 * density).toInt()
         val bitmap = createLabeledIconBitmap(R.drawable.ic_entry_point_marker, crossSizePx, dateLabel)
-        bitmap.incrementRefCount()
+        // refCount свежего битмапа = 0 = один владелец (Marker); onDestroy() маркера
+        // делает decrement -> -1 -> битмап уходит в пул переиспользования Mapsforge.
+        // Ручной incrementRefCount() сюда НЕ нужен (он нужен только при общем битмапе).
         val marker = Marker(
             LatLong(entryPoint.latitude, entryPoint.longitude), bitmap, 0, -bitmap.height / 2
         )
@@ -673,15 +738,18 @@ class MapController(
     /** Маркер цели навигации — отдельная фиолетовая иконка, не связана с
      * маркером точки входа или отмеченных мест. */
     fun updateNavigationTargetMarker(target: Pair<Double, Double>?) {
+        lastNavigationTarget = target
         val mapView = this.mapView ?: return
-        navigationTargetMarker?.let { mapView.layerManager.layers.remove(it) }
+        navigationTargetMarker?.let { mapView.layerManager.layers.remove(it); it.onDestroy() }
         navigationTargetMarker = null
         if (target == null) return
         val pinSizePx = (36 * density).toInt()
         // Поворот 0° — createRotatedMarkerBitmap здесь используется просто
         // как готовый helper "нарисовать drawable в битмап нужного размера".
         val bitmap = createRotatedMarkerBitmap(R.drawable.ic_navigation_target_marker, pinSizePx, 0f)
-        bitmap.incrementRefCount()
+        // refCount свежего битмапа = 0 = один владелец (Marker); onDestroy() маркера
+        // делает decrement -> -1 -> битмап уходит в пул переиспользования Mapsforge.
+        // Ручной incrementRefCount() сюда НЕ нужен (он нужен только при общем битмапе).
         val marker = Marker(LatLong(target.first, target.second), bitmap, 0, 0)
         mapView.layerManager.layers.add(marker)
         navigationTargetMarker = marker
@@ -734,9 +802,11 @@ class MapController(
         mapView?.model?.mapViewPosition?.center = LatLong(latitude, longitude)
     }
     fun onDestroy() {
-        tileRendererLayer?.let { it.mapDataStore.close() }
-        userMarkerLayer?.destroy()
-        mapView?.destroyAll()
+        // Инвалидируем поколение: идущее в фоне копирование карты остановится
+        // на ближайшем чанке, а вернувшийся setupMap не тронет уничтоженный экран.
+        setupGeneration++
+        // Единый teardown: destroyAll() раньше recycle() битмапа маркера.
+        teardownMap()
         AndroidGraphicFactory.clearResourceMemoryCache()
     }
     companion object {
